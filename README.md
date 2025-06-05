@@ -1,3 +1,3 @@
 # mygit
 
-I'm writing my git to learn how Git works under the covers
+I'm writing a git clone to learn how Git works under the covers
