@@ -2,12 +2,36 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <fcntl.h>
+
 #include <openssl/sha.h>
 #include <zlib.h>
+
+struct git_index_header {
+    char signature[4];     
+    uint32_t version;     
+    uint32_t entry_count; 
+};
+
+struct index_entry {
+    uint32_t ctime_s;    
+    uint32_t ctime_n; 
+    uint32_t mtime_s;
+    uint32_t mtime_n; 
+    uint32_t dev;      
+    uint32_t ino;             
+    uint32_t mode;           
+    uint32_t uid;           
+    uint32_t gid;          
+    uint32_t file_size;              
+    uint8_t sha1[SHA_DIGEST_LENGTH];
+    uint16_t flags;                
+    char* path;             
+};
 
 bool is_dir_exist(const char *path) {
     struct stat st;
@@ -82,9 +106,43 @@ char *hash_object(char* data, size_t data_size, char* type, bool write_flag) {
     return sha1;
 }
 
+void read_index() {
+    int fd = open(".git/index", O_RDONLY);
+    if (fd == -1) {
+        perror("open error");
+        return;
+    }
+
+    int file_size = lseek(fd, 0, SEEK_END);
+    if (file_size < 20) {
+        fprintf(stderr, "file too small to be a valid index\n");
+        close(fd);
+        return;
+    }
+    lseek(fd, 0, SEEK_SET);
+
+    unsigned char* file_data = malloc(file_size);
+    int read_bytes = read(fd, file_data, file_size);
+    if (read_bytes != file_size) {
+        perror("read error");
+        free(file_data);
+        close(fd);
+        return;
+    }
+
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    SHA1(file_data, file_size - 20, hash);
+    if (memcmp(hash, file_data + file_size - 20, 20) != 0) {
+        fprintf(stderr, "invalid index checksum"); 
+        exit(1);
+    }
+    printf("valid index checksum"); 
+
+    free(file_data);
+    close(fd);
+}
+
 int main() {
-    init_repo();
-    char* sha1 = hash_object("Hello World\n", 13, "blob", true);
-    free(sha1);
+    read_index();
     return 0;
 }
