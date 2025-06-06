@@ -7,11 +7,12 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <arpa/inet.h> 
 
 #include <openssl/sha.h>
 #include <zlib.h>
 
-struct git_index_header {
+struct index_header {
     char signature[4];     
     uint32_t version;     
     uint32_t entry_count; 
@@ -133,10 +134,26 @@ void read_index() {
     unsigned char hash[SHA_DIGEST_LENGTH];
     SHA1(file_data, file_size - 20, hash);
     if (memcmp(hash, file_data + file_size - 20, 20) != 0) {
-        fprintf(stderr, "invalid index checksum"); 
-        exit(1);
+        fprintf(stderr, "invalid index checksum\n"); 
+        return;
     }
-    printf("valid index checksum"); 
+
+    struct index_header index_header;
+    memcpy(index_header.signature, file_data, 4);
+    if (memcmp(index_header.signature, "DIRC", 4) != 0) {
+        fprintf(stderr, "invalid index signature\n"); 
+        return;
+    }
+    index_header.version = ntohl(*(uint32_t*)(file_data + 4));
+    if (index_header.version != 2) {
+        fprintf(stderr, "invalid index version\n"); 
+        return;
+    }
+
+    index_header.entry_count = ntohl(*(uint32_t*)(file_data + 8));
+
+    printf("sig: %.4s, version: %u, entry-count: %u\n", index_header.signature,
+           index_header.version, index_header.entry_count);
 
     free(file_data);
     close(fd);
