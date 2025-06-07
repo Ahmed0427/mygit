@@ -18,6 +18,14 @@ struct index_header {
     uint32_t entry_count; 
 };
 
+const int SIGNATURE_SIZE = 4;
+const int VERSION_SIZE = 4;
+const int ENTRY_COUNT_SIZE = 4;
+
+const int SIGNATURE_OFFSET = 0;
+const int VERSION_OFFSET = SIGNATURE_OFFSET + SIGNATURE_SIZE;
+const int ENTRY_COUNT_OFFSET = VERSION_OFFSET + VERSION_SIZE;
+
 struct index_entry {
     uint32_t ctime_s;    
     uint32_t ctime_n; 
@@ -33,6 +41,71 @@ struct index_entry {
     uint16_t flags;                
     char* path;             
 };
+
+const int CTIME_S_SIZE = 4;
+const int CTIME_N_SIZE = 4;
+const int MTIME_S_SIZE = 4;
+const int MTIME_N_SIZE = 4;
+const int DEV_SIZE = 4;
+const int INO_SIZE = 4;
+const int MODE_SIZE = 4;
+const int UID_SIZE = 4;
+const int GID_SIZE = 4;
+const int FILE_SIZE_SIZE = 4;
+const int SHA1_SIZE = SHA_DIGEST_LENGTH; 
+const int FLAGS_SIZE = 2;
+
+const int CTIME_S_OFFSET = 12;
+const int CTIME_N_OFFSET = CTIME_S_OFFSET + CTIME_S_SIZE;
+const int MTIME_S_OFFSET = CTIME_N_OFFSET + CTIME_N_SIZE;
+const int MTIME_N_OFFSET = MTIME_S_OFFSET + MTIME_S_SIZE;
+const int DEV_OFFSET = MTIME_N_OFFSET + MTIME_N_SIZE;
+const int INO_OFFSET = DEV_OFFSET + DEV_SIZE;
+const int MODE_OFFSET = INO_OFFSET + INO_SIZE;
+const int UID_OFFSET = MODE_OFFSET + MODE_SIZE;
+const int GID_OFFSET = UID_OFFSET + UID_SIZE;
+const int FILE_SIZE_OFFSET = GID_OFFSET + GID_SIZE;
+const int SHA1_OFFSET = FILE_SIZE_OFFSET + FILE_SIZE_SIZE;
+const int FLAGS_OFFSET = SHA1_OFFSET + SHA1_SIZE;
+const int PATH_OFFSET = FLAGS_OFFSET + FLAGS_SIZE;
+
+void print_sha1(const uint8_t sha1[SHA_DIGEST_LENGTH]) {
+    for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+        printf("%02x", sha1[i]);
+    }
+}
+
+void print_index_header(const struct index_header* header) {
+    printf("=== Index Header ===\n");
+    printf("Signature   : %.4s\n", header->signature);
+    printf("Version     : %u\n", header->version);
+    printf("Entry Count : %u\n", header->entry_count);
+    printf("====================\n");
+}
+
+void print_index_entry1(const struct index_entry* entry) {
+    printf("---- Index Entry ----\n");
+    printf("CTime        : %u.%u\n", entry->ctime_s, entry->ctime_n);
+    printf("MTime        : %u.%u\n", entry->mtime_s, entry->mtime_n);
+    printf("Device       : %u\n", entry->dev);
+    printf("Inode        : %u\n", entry->ino);
+    printf("Mode         : 0%o\n", entry->mode);
+    printf("UID          : %u\n", entry->uid);
+    printf("GID          : %u\n", entry->gid);
+    printf("File Size    : %u bytes\n", entry->file_size);
+    printf("SHA1         : ");
+    print_sha1(entry->sha1);
+    printf("\n");
+    printf("Flags        : 0x%04x\n", entry->flags);
+    printf("Path         : %s\n", entry->path);
+    printf("----------------------\n");
+}
+
+void print_index_entry(const struct index_entry* entry) {
+    printf("%06o ", entry->mode);  
+    print_sha1(entry->sha1);
+    printf(" 0\t%s\n", entry->path);    
+}
 
 bool is_dir_exist(const char *path) {
     struct stat st;
@@ -138,22 +211,41 @@ void read_index() {
         return;
     }
 
-    struct index_header index_header;
-    memcpy(index_header.signature, file_data, 4);
-    if (memcmp(index_header.signature, "DIRC", 4) != 0) {
+    struct index_header *header;
+    memcpy(header.signature, file_data, SIGNATURE_SIZE);
+    if (memcmp(header.signature, "DIRC", 4) != 0) {
         fprintf(stderr, "invalid index signature\n"); 
         return;
     }
-    index_header.version = ntohl(*(uint32_t*)(file_data + 4));
-    if (index_header.version != 2) {
+    header.version = ntohl(*(uint32_t*)(file_data + VERSION_OFFSET));
+    if (header.version != 2) {
         fprintf(stderr, "invalid index version\n"); 
         return;
     }
 
-    index_header.entry_count = ntohl(*(uint32_t*)(file_data + 8));
+    header.entry_count = ntohl(*(uint32_t*)(file_data + ENTRY_COUNT_OFFSET));
 
-    printf("sig: %.4s, version: %u, entry-count: %u\n", index_header.signature,
-           index_header.version, index_header.entry_count);
+    int i = 0;
+    uint32_t read_entries = 0;
+    while (read_entries < header.entry_count) {
+        struct index_entry entry;
+        entry.ctime_n = ntohl(*(uint32_t*)(file_data + CTIME_N_OFFSET + i));
+        entry.ctime_s = ntohl(*(uint32_t*)(file_data + CTIME_S_OFFSET + i));
+        entry.mtime_s = ntohl(*(uint32_t*)(file_data + MTIME_S_OFFSET + i));
+        entry.mtime_n = ntohl(*(uint32_t*)(file_data + MTIME_N_OFFSET + i));
+        entry.dev = ntohl(*(uint32_t*)(file_data + DEV_OFFSET + i));
+        entry.ino = ntohl(*(uint32_t*)(file_data + INO_OFFSET + i));
+        entry.mode = ntohl(*(uint32_t*)(file_data + MODE_OFFSET + i));
+        entry.uid = ntohl(*(uint32_t*)(file_data + UID_OFFSET + i));
+        entry.gid = ntohl(*(uint32_t*)(file_data + GID_OFFSET + i));
+        entry.file_size = ntohl(*(uint32_t*)(file_data + FILE_SIZE_OFFSET + i));
+        memcpy(entry.sha1, file_data + SHA1_OFFSET + i, SHA1_SIZE);
+        entry.flags = ntohs(*(uint16_t*)(file_data + FLAGS_OFFSET + i));
+        entry.path = strdup((char*)(file_data + PATH_OFFSET + i));
+        i += ((62 + strlen(entry.path) + 8) / 8) * 8;
+        print_index_entry(&entry);
+        read_entries++;
+    }
 
     free(file_data);
     close(fd);
