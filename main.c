@@ -211,7 +211,7 @@ void read_index() {
         return;
     }
 
-    struct index_header *header;
+    struct index_header header;
     memcpy(header.signature, file_data, SIGNATURE_SIZE);
     if (memcmp(header.signature, "DIRC", 4) != 0) {
         fprintf(stderr, "invalid index signature\n"); 
@@ -243,7 +243,7 @@ void read_index() {
         entry.flags = ntohs(*(uint16_t*)(file_data + FLAGS_OFFSET + i));
         entry.path = strdup((char*)(file_data + PATH_OFFSET + i));
         i += ((62 + strlen(entry.path) + 8) / 8) * 8;
-        print_index_entry(&entry);
+        print_index_entry1(&entry);
         read_entries++;
     }
 
