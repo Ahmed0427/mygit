@@ -12,11 +12,11 @@
 #include <openssl/sha.h>
 #include <zlib.h>
 
-struct index_header {
+typedef struct {
     char signature[4];     
     uint32_t version;     
     uint32_t entry_count; 
-};
+} index_header_t;
 
 const int SIGNATURE_SIZE = 4;
 const int VERSION_SIZE = 4;
@@ -26,7 +26,7 @@ const int SIGNATURE_OFFSET = 0;
 const int VERSION_OFFSET = SIGNATURE_OFFSET + SIGNATURE_SIZE;
 const int ENTRY_COUNT_OFFSET = VERSION_OFFSET + VERSION_SIZE;
 
-struct index_entry {
+typedef struct {
     uint32_t ctime_s;    
     uint32_t ctime_n; 
     uint32_t mtime_s;
@@ -40,7 +40,7 @@ struct index_entry {
     uint8_t sha1[SHA_DIGEST_LENGTH];
     uint16_t flags;                
     char* path;             
-};
+} index_entry_t;
 
 const int CTIME_S_SIZE = 4;
 const int CTIME_N_SIZE = 4;
@@ -69,42 +69,30 @@ const int SHA1_OFFSET = FILE_SIZE_OFFSET + FILE_SIZE_SIZE;
 const int FLAGS_OFFSET = SHA1_OFFSET + SHA1_SIZE;
 const int PATH_OFFSET = FLAGS_OFFSET + FLAGS_SIZE;
 
+typedef struct {
+    index_entry_t **entries;
+    size_t size;
+} index_entries_t;
+
+void free_index_entries(index_entries_t *entries) {
+    for (int i = 0; i < (int)entries->size; i++) {
+        free(entries->entries[i]->path);
+        free(entries->entries[i]);
+    }
+    free(entries->entries);
+    free(entries);
+}
+
 void print_sha1(const uint8_t sha1[SHA_DIGEST_LENGTH]) {
     for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
         printf("%02x", sha1[i]);
     }
 }
 
-void print_index_header(const struct index_header* header) {
-    printf("=== Index Header ===\n");
-    printf("Signature   : %.4s\n", header->signature);
-    printf("Version     : %u\n", header->version);
-    printf("Entry Count : %u\n", header->entry_count);
-    printf("====================\n");
-}
-
-void print_index_entry1(const struct index_entry* entry) {
-    printf("---- Index Entry ----\n");
-    printf("CTime        : %u.%u\n", entry->ctime_s, entry->ctime_n);
-    printf("MTime        : %u.%u\n", entry->mtime_s, entry->mtime_n);
-    printf("Device       : %u\n", entry->dev);
-    printf("Inode        : %u\n", entry->ino);
-    printf("Mode         : 0%o\n", entry->mode);
-    printf("UID          : %u\n", entry->uid);
-    printf("GID          : %u\n", entry->gid);
-    printf("File Size    : %u bytes\n", entry->file_size);
-    printf("SHA1         : ");
+void print_entry(index_entry_t *entry) {
+    printf("%06u ", entry->mode);
     print_sha1(entry->sha1);
-    printf("\n");
-    printf("Flags        : 0x%04x\n", entry->flags);
-    printf("Path         : %s\n", entry->path);
-    printf("----------------------\n");
-}
-
-void print_index_entry(const struct index_entry* entry) {
-    printf("%06o ", entry->mode);  
-    print_sha1(entry->sha1);
-    printf(" 0\t%s\n", entry->path);    
+    printf(" 0\t%s\n", entry->path);
 }
 
 bool is_dir_exist(const char *path) {
@@ -180,18 +168,18 @@ char *hash_object(char* data, size_t data_size, char* type, bool write_flag) {
     return sha1;
 }
 
-void read_index() {
+index_entries_t* read_index() {
     int fd = open(".git/index", O_RDONLY);
     if (fd == -1) {
         perror("open error");
-        return;
+        return NULL;
     }
 
     int file_size = lseek(fd, 0, SEEK_END);
     if (file_size < 20) {
         fprintf(stderr, "file too small to be a valid index\n");
         close(fd);
-        return;
+        return NULL;
     }
     lseek(fd, 0, SEEK_SET);
 
@@ -201,57 +189,68 @@ void read_index() {
         perror("read error");
         free(file_data);
         close(fd);
-        return;
+        return NULL;
     }
 
     unsigned char hash[SHA_DIGEST_LENGTH];
     SHA1(file_data, file_size - 20, hash);
     if (memcmp(hash, file_data + file_size - 20, 20) != 0) {
         fprintf(stderr, "invalid index checksum\n"); 
-        return;
+        return NULL;
     }
 
-    struct index_header header;
+    index_header_t header;
     memcpy(header.signature, file_data, SIGNATURE_SIZE);
     if (memcmp(header.signature, "DIRC", 4) != 0) {
         fprintf(stderr, "invalid index signature\n"); 
-        return;
+        return NULL;
     }
     header.version = ntohl(*(uint32_t*)(file_data + VERSION_OFFSET));
     if (header.version != 2) {
         fprintf(stderr, "invalid index version\n"); 
-        return;
+        return NULL;
     }
 
     header.entry_count = ntohl(*(uint32_t*)(file_data + ENTRY_COUNT_OFFSET));
 
     int i = 0;
     uint32_t read_entries = 0;
+    index_entries_t *entries = calloc(1, sizeof(index_entries_t));
+    entries->entries = calloc(header.entry_count, sizeof(index_entry_t*));
+    entries->size = header.entry_count;
+    
     while (read_entries < header.entry_count) {
-        struct index_entry entry;
-        entry.ctime_n = ntohl(*(uint32_t*)(file_data + CTIME_N_OFFSET + i));
-        entry.ctime_s = ntohl(*(uint32_t*)(file_data + CTIME_S_OFFSET + i));
-        entry.mtime_s = ntohl(*(uint32_t*)(file_data + MTIME_S_OFFSET + i));
-        entry.mtime_n = ntohl(*(uint32_t*)(file_data + MTIME_N_OFFSET + i));
-        entry.dev = ntohl(*(uint32_t*)(file_data + DEV_OFFSET + i));
-        entry.ino = ntohl(*(uint32_t*)(file_data + INO_OFFSET + i));
-        entry.mode = ntohl(*(uint32_t*)(file_data + MODE_OFFSET + i));
-        entry.uid = ntohl(*(uint32_t*)(file_data + UID_OFFSET + i));
-        entry.gid = ntohl(*(uint32_t*)(file_data + GID_OFFSET + i));
-        entry.file_size = ntohl(*(uint32_t*)(file_data + FILE_SIZE_OFFSET + i));
-        memcpy(entry.sha1, file_data + SHA1_OFFSET + i, SHA1_SIZE);
-        entry.flags = ntohs(*(uint16_t*)(file_data + FLAGS_OFFSET + i));
-        entry.path = strdup((char*)(file_data + PATH_OFFSET + i));
-        i += ((62 + strlen(entry.path) + 8) / 8) * 8;
-        print_index_entry1(&entry);
+        index_entry_t *entry = calloc(1, sizeof(index_entry_t));
+        entry->ctime_n = ntohl(*(uint32_t*)(file_data + CTIME_N_OFFSET + i));
+        entry->ctime_s = ntohl(*(uint32_t*)(file_data + CTIME_S_OFFSET + i));
+        entry->mtime_s = ntohl(*(uint32_t*)(file_data + MTIME_S_OFFSET + i));
+        entry->mtime_n = ntohl(*(uint32_t*)(file_data + MTIME_N_OFFSET + i));
+        entry->dev = ntohl(*(uint32_t*)(file_data + DEV_OFFSET + i));
+        entry->ino = ntohl(*(uint32_t*)(file_data + INO_OFFSET + i));
+        entry->mode = ntohl(*(uint32_t*)(file_data + MODE_OFFSET + i));
+        entry->uid = ntohl(*(uint32_t*)(file_data + UID_OFFSET + i));
+        entry->gid = ntohl(*(uint32_t*)(file_data + GID_OFFSET + i));
+        entry->file_size = ntohl(*(uint32_t*)(file_data + FILE_SIZE_OFFSET + i));
+        memcpy(entry->sha1, file_data + SHA1_OFFSET + i, SHA1_SIZE);
+        entry->flags = ntohs(*(uint16_t*)(file_data + FLAGS_OFFSET + i));
+        entry->path = strdup((char*)(file_data + PATH_OFFSET + i));
+        i += ((62 + strlen(entry->path) + 8) / 8) * 8;
+        entries->entries[read_entries] = entry;
         read_entries++;
     }
 
     free(file_data);
     close(fd);
+
+    return entries;
 }
 
 int main() {
-    read_index();
+    index_entries_t *entries = read_index();
+    for (int i = 0; i < (int)entries->size; i++) {
+        print_entry(entries->entries[i]);
+    }
+    free_index_entries(entries);
+    entries = NULL;
     return 0;
 }
