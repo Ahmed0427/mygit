@@ -90,12 +90,6 @@ void print_sha1(const uint8_t sha1[SHA_DIGEST_LENGTH]) {
     }
 }
 
-void print_entry(index_entry_t *entry) {
-    printf("%06u ", entry->mode);
-    print_sha1(entry->sha1);
-    printf(" 0\t%s\n", entry->path);
-}
-
 bool is_dir_exist(const char *path) {
     struct stat st;
     return (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
@@ -235,7 +229,9 @@ index_entries_t* read_index() {
         memcpy(entry->sha1, file_data + SHA1_OFFSET + i, SHA1_SIZE);
         entry->flags = ntohs(*(uint16_t*)(file_data + FLAGS_OFFSET + i));
         entry->path = strdup((char*)(file_data + PATH_OFFSET + i));
+
         i += ((62 + strlen(entry->path) + 8) / 8) * 8;
+
         entries->entries[read_entries] = entry;
         read_entries++;
     }
@@ -246,11 +242,19 @@ index_entries_t* read_index() {
     return entries;
 }
 
+void ls_files(index_entries_t *entries) {
+    for (int i = 0; i < (int)entries->size; i++) {
+        index_entry_t *entry = entries->entries[i];
+        uint16_t stage = (entry->flags >> 12) & 0x3;
+        printf("%06u ", entry->mode);
+        print_sha1(entry->sha1);
+        printf(" %d\t%s\n", stage, entry->path);
+    }
+}
+
 int main() {
     index_entries_t *entries = read_index();
-    for (int i = 0; i < (int)entries->size; i++) {
-        print_entry(entries->entries[i]);
-    }
+    ls_files(entries);
     free_index_entries(entries);
     entries = NULL;
     return 0;
