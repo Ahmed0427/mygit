@@ -21,6 +21,7 @@ typedef struct {
 const int SIGNATURE_SIZE = 4;
 const int VERSION_SIZE = 4;
 const int ENTRY_COUNT_SIZE = 4;
+const int INDEX_HEADER_SIZE = SIGNATURE_SIZE + VERSION_SIZE + ENTRY_COUNT_SIZE;
 
 const int SIGNATURE_OFFSET = 0;
 const int VERSION_OFFSET = SIGNATURE_OFFSET + SIGNATURE_SIZE;
@@ -55,7 +56,7 @@ const int FILE_SIZE_SIZE = 4;
 const int SHA1_SIZE = SHA_DIGEST_LENGTH; 
 const int FLAGS_SIZE = 2;
 
-const int CTIME_S_OFFSET = 12;
+const int CTIME_S_OFFSET = 0;
 const int CTIME_N_OFFSET = CTIME_S_OFFSET + CTIME_S_SIZE;
 const int MTIME_S_OFFSET = CTIME_N_OFFSET + CTIME_N_SIZE;
 const int MTIME_N_OFFSET = MTIME_S_OFFSET + MTIME_S_SIZE;
@@ -213,12 +214,12 @@ index_entries_t* read_index() {
 
     header.entry_count = ntohl(*(uint32_t*)(file_data + ENTRY_COUNT_OFFSET));
 
-    int i = 0;
-    uint32_t read_entries = 0;
     index_entries_t *entries = calloc(1, sizeof(index_entries_t));
     entries->entries = calloc(header.entry_count, sizeof(index_entry_t*));
     entries->size = header.entry_count;
-    
+
+    int i = INDEX_HEADER_SIZE;
+    uint32_t read_entries = 0;
     while (read_entries < header.entry_count) {
         index_entry_t *entry = calloc(1, sizeof(index_entry_t));
         entry->ctime_n = ntohl(*(uint32_t*)(file_data + CTIME_N_OFFSET + i));
