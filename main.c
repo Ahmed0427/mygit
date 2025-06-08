@@ -242,20 +242,25 @@ index_entries_t* read_index() {
     return entries;
 }
 
-void ls_files(index_entries_t *entries) {
+void ls_files(bool detailed) {
+    index_entries_t *entries = read_index();
     for (int i = 0; i < (int)entries->size; i++) {
         index_entry_t *entry = entries->entries[i];
-        uint16_t stage = (entry->flags >> 12) & 0x3;
-        printf("%06u ", entry->mode);
-        print_sha1(entry->sha1);
-        printf(" %d\t%s\n", stage, entry->path);
+        if (detailed) {
+            uint16_t stage = (entry->flags >> 12) & 0x3;
+            printf("%06o ", entry->mode);
+            print_sha1(entry->sha1);
+            printf(" %d\t%s\n", stage, entry->path);
+        } else {
+            printf("%s\n", entry->path);
+        }
     }
+    free_index_entries(entries);
+    entries = NULL;
 }
 
 int main() {
-    index_entries_t *entries = read_index();
-    ls_files(entries);
-    free_index_entries(entries);
-    entries = NULL;
+    ls_files(true);
+    ls_files(false);
     return 0;
 }
