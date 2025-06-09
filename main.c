@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <arpa/inet.h> 
+#include <dirent.h>
 
 #include <openssl/sha.h>
 #include <zlib.h>
@@ -121,7 +122,7 @@ void init_repo() {
     printf("initialized empty repository\n");
 }
 
-char *hash_object(char* data, size_t data_size, char* type, bool write_flag) {
+unsigned char *hash_object(unsigned char* data, size_t data_size, char* type, bool write_flag) {
     char header[64] = {0};
     sprintf(header, "%s %zu", type, data_size);
     size_t all_data_size = strlen(header) + data_size + 1;
@@ -132,10 +133,9 @@ char *hash_object(char* data, size_t data_size, char* type, bool write_flag) {
     unsigned char hash[SHA_DIGEST_LENGTH];
     SHA1(all_data, all_data_size, hash);
 
-    char *sha1 = calloc(2 * SHA_DIGEST_LENGTH + 1, sizeof(char));
-    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
-        sprintf(sha1 + i * 2, "%02x", hash[i]);
-    }
+    unsigned char *sha1 = calloc(SHA_DIGEST_LENGTH, sizeof(char));
+    memcpy(sha1, hash, SHA_DIGEST_LENGTH);
+
     if (write_flag) {
         char dir_path[16];
         char obj_path[16 + 38];
@@ -163,18 +163,18 @@ char *hash_object(char* data, size_t data_size, char* type, bool write_flag) {
     return sha1;
 }
 
-index_entries_t* read_index() {
-    int fd = open(".git/index", O_RDONLY);
+void read_file(char* path, unsigned char** data, int* data_size) {
+    int fd = open(path, O_RDONLY);
     if (fd == -1) {
         perror("open error");
-        return NULL;
+        return;
     }
 
     int file_size = lseek(fd, 0, SEEK_END);
-    if (file_size < 20) {
-        fprintf(stderr, "file too small to be a valid index\n");
+    if (file_size == -1) {
+        perror("lseek error");
         close(fd);
-        return NULL;
+        return;
     }
     lseek(fd, 0, SEEK_SET);
 
@@ -184,8 +184,18 @@ index_entries_t* read_index() {
         perror("read error");
         free(file_data);
         close(fd);
-        return NULL;
+        return;
     }
+
+    *data_size = file_size;
+    *data = file_data;
+    close(fd);
+}
+
+index_entries_t* read_index() {
+    int file_size;
+    unsigned char *file_data;
+    read_file(".git/index", &file_data, &file_size);
 
     unsigned char hash[SHA_DIGEST_LENGTH];
     SHA1(file_data, file_size - 20, hash);
@@ -237,8 +247,6 @@ index_entries_t* read_index() {
     }
 
     free(file_data);
-    close(fd);
-
     return entries;
 }
 
@@ -259,8 +267,161 @@ void ls_files(bool detailed) {
     entries = NULL;
 }
 
+void get_dir_files(char* base_dir_path, char*** files_list, int* list_size) {
+    int stack_cap = 4;
+    char **stack = calloc(stack_cap, sizeof(char*));
+    stack[0] = strdup(base_dir_path);
+    int stack_size = 1;
+
+    int list_cap = 4;
+    *files_list = calloc(list_cap, sizeof(char*));
+
+    while (stack_size > 0) {
+        stack_size--;
+        char *dir_path = stack[stack_size];
+        DIR *dir = opendir(dir_path);
+        if (!dir) {
+            free(dir_path);
+            continue;
+        }
+
+        struct dirent *ent;
+        char path[4096] = {0}; 
+        while((ent = readdir(dir)) != NULL) {
+            if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
+                continue;
+            }
+
+            if (strcmp(dir_path, ".") != 0) {
+                snprintf(path, sizeof(path), "%s/%s", dir_path, ent->d_name);
+            } else {
+                snprintf(path, sizeof(path), "%s", ent->d_name);
+            }
+
+            struct stat st;
+            if (stat(path, &st) == -1) {
+                continue;
+            }
+
+            if (S_ISDIR(st.st_mode)) {
+                if (strcmp(ent->d_name, ".git") != 0) {
+                    if (stack_size >= stack_cap) {
+                        stack_cap *= 2;
+                        stack = realloc(stack, stack_cap * sizeof(char*));
+                    }
+                    stack[stack_size] = strdup(path);
+                    stack_size++;
+                }
+            } else {
+                if (*list_size >= list_cap) {
+                    list_cap *= 2;
+                    *files_list = realloc(*files_list, list_cap * sizeof(char*));
+                }
+                (*files_list)[*list_size] = strdup(path);
+                (*list_size)++;
+            }
+        }
+        free(dir_path);
+        closedir(dir);
+    }
+    free(stack);
+}
+
+
+void print_changed_file(char **paths, int paths_count,
+                        index_entries_t* entries) {
+
+    bool first_print = true;
+    for (int i = 0; i < paths_count; i++) {
+        for (int j = 0; j < (int)entries->size; j++) {
+            if (strcmp(paths[i], entries->entries[j]->path) != 0) continue;
+
+            int data_size;
+            unsigned char *data;
+            read_file(paths[i], &data, &data_size);
+            unsigned char* data_sha1 = hash_object(data, data_size, "blob", false);
+
+            if (memcmp(data_sha1, entries->entries[j]->sha1, 20) != 0) {
+                if (first_print) {
+                    printf("  modified files:\n");
+                    first_print = false;
+                }
+                printf("    %s\n", paths[i]);
+            }
+
+            free(data_sha1);
+            free(data);
+        }
+    }
+}
+
+void print_new_file(char **paths, int paths_count,
+                    index_entries_t* entries) {
+
+    bool first_print = true;
+    for (int i = 0; i < paths_count; i++) {
+        bool new_flag = true;
+        for (int j = 0; j < (int)entries->size; j++) {
+            if (strcmp(paths[i], entries->entries[j]->path) == 0) {
+                new_flag = false;
+                break; // Stop searching, file is not new
+            }
+        }
+        if (new_flag) {
+            if (first_print) {
+                printf("  new files:\n");
+                first_print = false;
+            }
+            printf("    %s\n", paths[i]);
+        }
+    }
+}
+
+void print_deleted_file(char **paths, int paths_count,
+                        index_entries_t* index_entries) {
+
+    bool first_print = true;
+    for (int i = 0; i < (int)index_entries->size; i++) {
+        const char* indexed_path = index_entries->entries[i]->path;
+        bool found = false;
+
+        for (int j = 0; j < paths_count; j++) {
+            if (strcmp(indexed_path, paths[j]) == 0) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            if (first_print) {
+                printf("  deleted files:\n");
+                first_print = false;
+            }
+            printf("    %s\n", indexed_path);
+        }
+    }
+}
+
+void status() {
+    int paths_count = 0;
+    char** paths = NULL;
+    get_dir_files(".", &paths, &paths_count);
+    
+    index_entries_t* index_entries = read_index();
+
+    printf("Changes not staged for commit:\n");
+    print_changed_file(paths, paths_count, index_entries);
+    print_new_file(paths, paths_count, index_entries);
+    print_deleted_file(paths, paths_count, index_entries);
+
+    free_index_entries(index_entries);
+    for (int i = 0; i < paths_count; i++) {
+        free(paths[i]);
+    }
+    free(paths);
+}
+
 int main() {
-    ls_files(true);
-    ls_files(false);
+    status();
     return 0;
 }
