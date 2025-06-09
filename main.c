@@ -360,14 +360,14 @@ void print_new_file(char **paths, int paths_count,
 
     bool first_print = true;
     for (int i = 0; i < paths_count; i++) {
-        bool new_flag = true;
+        bool found = false;
         for (int j = 0; j < (int)entries->size; j++) {
             if (strcmp(paths[i], entries->entries[j]->path) == 0) {
-                new_flag = false;
-                break; // Stop searching, file is not new
+                found = true;
+                break; 
             }
         }
-        if (new_flag) {
+        if (!found) {
             if (first_print) {
                 printf("  new files:\n");
                 first_print = false;
@@ -382,22 +382,19 @@ void print_deleted_file(char **paths, int paths_count,
 
     bool first_print = true;
     for (int i = 0; i < (int)index_entries->size; i++) {
-        const char* indexed_path = index_entries->entries[i]->path;
         bool found = false;
-
         for (int j = 0; j < paths_count; j++) {
-            if (strcmp(indexed_path, paths[j]) == 0) {
+            if (strcmp(index_entries->entries[i]->path, paths[j]) == 0) {
                 found = true;
                 break;
             }
         }
-
         if (!found) {
             if (first_print) {
                 printf("  deleted files:\n");
                 first_print = false;
             }
-            printf("    %s\n", indexed_path);
+            printf("    %s\n", index_entries->entries[i]->path);
         }
     }
 }
@@ -411,7 +408,9 @@ void status() {
 
     printf("Changes not staged for commit:\n");
     print_changed_file(paths, paths_count, index_entries);
+    printf("\n");
     print_new_file(paths, paths_count, index_entries);
+    printf("\n");
     print_deleted_file(paths, paths_count, index_entries);
 
     free_index_entries(index_entries);
