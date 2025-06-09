@@ -406,7 +406,6 @@ void status() {
     
     index_entries_t* index_entries = read_index();
 
-    printf("Changes not staged for commit:\n");
     print_changed_file(paths, paths_count, index_entries);
     printf("\n");
     print_new_file(paths, paths_count, index_entries);
