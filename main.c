@@ -397,7 +397,7 @@ void collect_files(const char* base, char*** files, int* cnt) {
     free(stk);
 }
 
-void print_mod(char **paths, int pcnt, idx_entries_t* idx) {
+void print_modified(char **paths, int pcnt, idx_entries_t* idx) {
     bool hdr = false;
     
     for (int i = 0; i < pcnt; i++) {
@@ -453,7 +453,7 @@ void print_new(char **paths, int pcnt, idx_entries_t* idx) {
     }
 }
 
-void print_del(char **paths, int pcnt, idx_entries_t* idx) {
+void print_deleted(char **paths, int pcnt, idx_entries_t* idx) {
     bool hdr = false;
     
     for (size_t i = 0; i < idx->size; i++) {
@@ -487,11 +487,11 @@ void show_status() {
         return;
     }
 
-    print_mod(paths, fcnt, idx);
+    print_modified(paths, fcnt, idx);
     printf("\n");
     print_new(paths, fcnt, idx);
     printf("\n");
-    print_del(paths, fcnt, idx);
+    print_delelted(paths, fcnt, idx);
 
     free_entries(idx);
     free_str_arr(paths, fcnt);
