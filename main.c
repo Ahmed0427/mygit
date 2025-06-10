@@ -142,9 +142,7 @@ int read_file_data(const char* path, unsigned char** data, int* data_size) {
     return 0;
 }
 
-int write_file_data(const char* path, const unsigned char* data,
-                           size_t size, int mode) {
-
+int write_file_data(const char* path, const unsigned char* data, size_t size, int mode) {
     int fd = open(path, O_CREAT | O_RDWR, mode);
     if (fd == -1) {
         handle_error("open error");
@@ -163,64 +161,101 @@ void initialize_repository() {
     create_directory(".git/refs/heads");
 
     const char *head_content = "ref: refs/heads/main";
-    write_file_data(".git/HEAD",
-                    (const unsigned char*)head_content, strlen(head_content), 0664);
+    write_file_data(".git/HEAD", (const unsigned char*)head_content, strlen(head_content), 0664);
 
     printf("initialized empty repository\n");
 }
 
-unsigned char* create_object_hash(const unsigned char* data, size_t data_size,
-                                       const char* type, bool write_to_disk) {
-
+unsigned char* create_git_object_data(const unsigned char* data, size_t data_size, 
+                                            const char* type, size_t* total_size) {
     char header[HEADER_BUFFER_SIZE] = {0};
     snprintf(header, sizeof(header), "%s %zu", type, data_size);
     
-    size_t total_size = strlen(header) + data_size + 1;
-    unsigned char* combined_data = calloc(total_size, sizeof(char));
+    size_t header_len = strlen(header);
+    *total_size = header_len + data_size + 1;
+    
+    unsigned char* combined_data = calloc(*total_size, sizeof(char));
     if (!combined_data) return NULL;
 
-    memcpy(combined_data, header, strlen(header));
-    memcpy(combined_data + strlen(header) + 1, data, data_size);
+    memcpy(combined_data, header, header_len);
+    memcpy(combined_data + header_len + 1, data, data_size);
+    
+    return combined_data;
+}
 
+unsigned char* compute_sha1_hash(const unsigned char* data, size_t data_size) {
     unsigned char hash[SHA_DIGEST_LENGTH];
-    SHA1(combined_data, total_size, hash);
+    SHA1(data, data_size, hash);
 
     unsigned char *result_hash = malloc(SHA_DIGEST_LENGTH);
     if (result_hash) {
         memcpy(result_hash, hash, SHA_DIGEST_LENGTH);
     }
-
-    if (write_to_disk && result_hash) {
-        char dir_path[32];
-        char obj_path[64];
-        
-        snprintf(dir_path, sizeof(dir_path), ".git/objects/%02x", result_hash[0]);
-        snprintf(obj_path, sizeof(obj_path), "%s/%02x", dir_path, result_hash[1]);
-        
-        char hex_suffix[40] = {0};
-        for (int i = 2; i < SHA_DIGEST_LENGTH; i++) {
-            snprintf(hex_suffix + (i-2)*2, 3, "%02x", result_hash[i]);
-        }
-        strncat(obj_path, hex_suffix, sizeof(obj_path) - strlen(obj_path) - 1);
-
-        if (!directory_exists(dir_path)) {
-            create_directory(dir_path);
-        }
-
-        size_t compressed_len = total_size * 2;
-        unsigned char* compressed = malloc(compressed_len);
-        if (compressed) {
-            if (compress(compressed, &compressed_len, combined_data, total_size) == Z_OK) {
-                write_file_data(obj_path, compressed, compressed_len, 0444);
-            }
-            free(compressed);
-        }
-    }
-
-    free(combined_data);
+    
     return result_hash;
 }
 
+void build_object_path(const unsigned char* hash, char* dir_path, char* obj_path) {
+    snprintf(dir_path, 32, ".git/objects/%02x", hash[0]);
+    snprintf(obj_path, 64, "%s/", dir_path);
+    
+    char* path_end = obj_path + strlen(obj_path);
+    for (int i = 1; i < SHA_DIGEST_LENGTH; i++) {
+        snprintf(path_end + (i-1)*2, 3, "%02x", hash[i]);
+    }
+}
+
+bool compress_and_write_object(const unsigned char* data, size_t data_size, 
+                                     const char* obj_path) {
+    size_t compressed_len = data_size * 2;
+    unsigned char* compressed = malloc(compressed_len);
+    if (!compressed) return false;
+    
+    bool success = false;
+    if (compress(compressed, &compressed_len, data, data_size) == Z_OK) {
+        success = (write_file_data(obj_path, compressed, compressed_len, 0444) == 0);
+    }
+    
+    free(compressed);
+    return success;
+}
+
+bool write_object_to_disk(const unsigned char* object_data, size_t data_size,
+                                const unsigned char* hash) {
+    char dir_path[32];
+    char obj_path[64];
+    
+    build_object_path(hash, dir_path, obj_path);
+    
+    if (!directory_exists(dir_path)) {
+        create_directory(dir_path);
+    }
+    
+    return compress_and_write_object(object_data, data_size, obj_path);
+}
+
+unsigned char* create_object_hash(const unsigned char* data, size_t data_size,
+                                       const char* type, bool write_to_disk) {
+    size_t total_size;
+    unsigned char* object_data = create_git_object_data(data, data_size, type,
+                                                        &total_size);
+    if (!object_data) return NULL;
+
+    unsigned char* hash = compute_sha1_hash(object_data, total_size);
+    if (!hash) {
+        free(object_data);
+        return NULL;
+    }
+
+    if (write_to_disk) {
+        write_object_to_disk(object_data, total_size, hash);
+    }
+
+    free(object_data);
+    return hash;
+}
+
+// Index parsing
 bool validate_index_header(const unsigned char* file_data, index_header_t* header) {
     memcpy(header->signature, file_data, SIGNATURE_SIZE);
     if (memcmp(header->signature, "DIRC", 4) != 0) {
@@ -241,9 +276,7 @@ bool validate_index_header(const unsigned char* file_data, index_header_t* heade
 bool validate_index_checksum(const unsigned char* file_data, int file_size) {
     unsigned char computed_hash[SHA_DIGEST_LENGTH];
     SHA1(file_data, file_size - SHA_DIGEST_LENGTH, computed_hash);
-
-    return memcmp(computed_hash, file_data + file_size - SHA_DIGEST_LENGTH,
-                  SHA_DIGEST_LENGTH) == 0;
+    return memcmp(computed_hash, file_data + file_size - SHA_DIGEST_LENGTH, SHA_DIGEST_LENGTH) == 0;
 }
 
 index_entry_t* parse_index_entry(const unsigned char* data, int offset) {
@@ -308,6 +341,7 @@ index_entries_t* read_index_file() {
             return NULL;
         }
         
+        // Calculate next entry offset (8-byte aligned)
         offset += ((62 + strlen(entries->entries[i]->path) + 8) / 8) * 8;
     }
 
@@ -315,6 +349,7 @@ index_entries_t* read_index_file() {
     return entries;
 }
 
+// File listing
 void list_files(bool show_details) {
     index_entries_t *entries = read_index_file();
     if (!entries) return;
@@ -334,9 +369,8 @@ void list_files(bool show_details) {
     free_index_entries(entries);
 }
 
-void collect_directory_files(const char* base_path, char*** files_list,
-                                    int* list_size) {
-
+// Directory traversal
+void collect_directory_files(const char* base_path, char*** files_list, int* list_size) {
     const int initial_capacity = 16;
     int stack_capacity = initial_capacity;
     char **directory_stack = calloc(stack_capacity, sizeof(char*));
@@ -380,8 +414,7 @@ void collect_directory_files(const char* base_path, char*** files_list,
                 if (strcmp(entry->d_name, ".git") != 0) {
                     if (stack_size >= stack_capacity) {
                         stack_capacity *= 2;
-                        directory_stack = realloc(directory_stack,
-                                          stack_capacity * sizeof(char*));
+                        directory_stack = realloc(directory_stack, stack_capacity * sizeof(char*));
                     }
                     directory_stack[stack_size] = strdup(path);
                     stack_size++;
@@ -403,9 +436,8 @@ void collect_directory_files(const char* base_path, char*** files_list,
     free(directory_stack);
 }
 
-void print_modified_files(char **file_paths, int path_count,
-                                 index_entries_t* index_entries) {
-
+// Status checking functions
+void print_modified_files(char **file_paths, int path_count, index_entries_t* index_entries) {
     bool header_printed = false;
     
     for (int i = 0; i < path_count; i++) {
@@ -420,11 +452,8 @@ void print_modified_files(char **file_paths, int path_count,
                 continue;
             }
 
-            unsigned char* file_hash = 
-                create_object_hash(file_data, data_size, "blob", false);
-
-            bool is_modified = memcmp(file_hash, index_entries->entries[j]->sha1,
-                                      SHA_DIGEST_LENGTH) != 0;
+            unsigned char* file_hash = create_object_hash(file_data, data_size, "blob", false);
+            bool is_modified = memcmp(file_hash, index_entries->entries[j]->sha1, SHA_DIGEST_LENGTH) != 0;
 
             if (is_modified) {
                 if (!header_printed) {
@@ -441,10 +470,9 @@ void print_modified_files(char **file_paths, int path_count,
     }
 }
 
-void print_new_files(char **file_paths, int path_count,
-                            index_entries_t* index_entries) {
-
+void print_new_files(char **file_paths, int path_count, index_entries_t* index_entries) {
     bool header_printed = false;
+    
     for (int i = 0; i < path_count; i++) {
         bool found_in_index = false;
         
@@ -465,10 +493,9 @@ void print_new_files(char **file_paths, int path_count,
     }
 }
 
-void print_deleted_files(char **file_paths, int path_count,
-                                index_entries_t* index_entries) {
-
+void print_deleted_files(char **file_paths, int path_count, index_entries_t* index_entries) {
     bool header_printed = false;
+    
     for (size_t i = 0; i < index_entries->size; i++) {
         bool found_in_filesystem = false;
         
