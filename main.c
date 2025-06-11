@@ -1,16 +1,15 @@
+#include <arpa/inet.h>
+#include <dirent.h>
+#include <fcntl.h>
+#include <openssl/sha.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <arpa/inet.h> 
-#include <dirent.h>
-
-#include <openssl/sha.h>
+#include <unistd.h>
 #include <zlib.h>
 
 #define SIG_SIZE 4
@@ -35,43 +34,43 @@
 #define HDR_BUF_SIZE 64
 
 typedef struct {
-    char sig[SIG_SIZE];     
-    uint32_t ver;     
-    uint32_t cnt; 
+    char sig[SIG_SIZE];
+    uint32_t ver;
+    uint32_t cnt;
 } idx_hdr_t;
 
 typedef struct {
-    uint32_t ctime_s;    
-    uint32_t ctime_n; 
+    uint32_t ctime_s;
+    uint32_t ctime_n;
     uint32_t mtime_s;
-    uint32_t mtime_n; 
-    uint32_t dev;      
-    uint32_t ino;             
-    uint32_t mode;           
-    uint32_t uid;           
-    uint32_t gid;          
-    uint32_t fsize;              
+    uint32_t mtime_n;
+    uint32_t dev;
+    uint32_t ino;
+    uint32_t mode;
+    uint32_t uid;
+    uint32_t gid;
+    uint32_t fsize;
     uint8_t sha1[SHA_DIGEST_LENGTH];
-    uint16_t flags;                
-    char* path;             
+    uint16_t flags;
+    char* path;
 } idx_entry_t;
 
 typedef struct {
-    idx_entry_t **entries;
+    idx_entry_t** entries;
     size_t size;
 } idx_entries_t;
 
-void err(const char *msg) {
+void err(const char* msg) {
     perror(msg);
     exit(1);
 }
 
-bool dir_exists(const char *path) {
+bool dir_exists(const char* path) {
     struct stat st;
     return (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
 }
 
-void mk_dir(const char *dir) {
+void mk_dir(const char* dir) {
     if (mkdir(dir, 0775) != 0) {
         err("mkdir error");
     }
@@ -83,23 +82,23 @@ void print_sha1(const uint8_t sha1[SHA_DIGEST_LENGTH]) {
     }
 }
 
-void free_str_arr(char **arr, int cnt) {
+void free_str_arr(char** arr, int cnt) {
     for (int i = 0; i < cnt; i++) {
         free(arr[i]);
     }
     free(arr);
 }
 
-void free_entry(idx_entry_t *e) {
+void free_entry(idx_entry_t* e) {
     if (e) {
         free(e->path);
         free(e);
     }
 }
 
-void free_entries(idx_entries_t *ents) {
+void free_entries(idx_entries_t* ents) {
     if (!ents) return;
-    
+
     for (size_t i = 0; i < ents->size; i++) {
         free_entry(ents->entries[i]);
     }
@@ -142,15 +141,16 @@ int read_file(const char* path, unsigned char** data, int* size) {
     return 0;
 }
 
-int write_file(const char* path, const unsigned char* data, size_t size, int mode) {
+int write_file(const char* path, const unsigned char* data, size_t size,
+               int mode) {
     int fd = open(path, O_CREAT | O_RDWR, mode);
     if (fd == -1) {
         err("open error");
     }
-    
+
     ssize_t wb = write(fd, data, size);
     close(fd);
-    
+
     return (wb == (ssize_t)size) ? 0 : -1;
 }
 
@@ -160,18 +160,17 @@ void init_repo() {
     mk_dir(".git/refs");
     mk_dir(".git/refs/heads");
 
-    const char *head = "ref: refs/heads/main";
+    const char* head = "ref: refs/heads/main";
     write_file(".git/HEAD", (const unsigned char*)head, strlen(head), 0664);
 
     printf("initialized empty repository\n");
 }
 
 unsigned char* hash_obj(const unsigned char* data, size_t data_size,
-                                       const char* type, bool write_to_disk) {
-
+                        const char* type, bool write_to_disk) {
     char header[HDR_BUF_SIZE] = {0};
     snprintf(header, sizeof(header), "%s %zu", type, data_size);
-    
+
     size_t total_size = strlen(header) + data_size + 1;
     unsigned char* combined_data = calloc(total_size, sizeof(char));
     if (!combined_data) return NULL;
@@ -182,7 +181,7 @@ unsigned char* hash_obj(const unsigned char* data, size_t data_size,
     unsigned char hash[SHA_DIGEST_LENGTH];
     SHA1(combined_data, total_size, hash);
 
-    unsigned char *result_hash = malloc(SHA_DIGEST_LENGTH);
+    unsigned char* result_hash = malloc(SHA_DIGEST_LENGTH);
     if (result_hash) {
         memcpy(result_hash, hash, SHA_DIGEST_LENGTH);
     }
@@ -190,13 +189,15 @@ unsigned char* hash_obj(const unsigned char* data, size_t data_size,
     if (write_to_disk && result_hash) {
         char dir_path[32];
         char obj_path[64];
-        
-        snprintf(dir_path, sizeof(dir_path), ".git/objects/%02x", result_hash[0]);
-        snprintf(obj_path, sizeof(obj_path), "%s/%02x", dir_path, result_hash[1]);
-        
+
+        snprintf(dir_path, sizeof(dir_path), ".git/objects/%02x",
+                 result_hash[0]);
+        snprintf(obj_path, sizeof(obj_path), "%s/%02x", dir_path,
+                 result_hash[1]);
+
         char hex_suffix[40] = {0};
         for (int i = 2; i < SHA_DIGEST_LENGTH; i++) {
-            snprintf(hex_suffix + (i-2)*2, 3, "%02x", result_hash[i]);
+            snprintf(hex_suffix + (i - 2) * 2, 3, "%02x", result_hash[i]);
         }
         strncat(obj_path, hex_suffix, sizeof(obj_path) - strlen(obj_path) - 1);
 
@@ -207,8 +208,8 @@ unsigned char* hash_obj(const unsigned char* data, size_t data_size,
         size_t compressed_len = total_size * 2;
         unsigned char* compressed = malloc(compressed_len);
         if (compressed) {
-            if (compress(compressed, &compressed_len,
-                         combined_data, total_size) == Z_OK) {
+            if (compress(compressed, &compressed_len, combined_data,
+                         total_size) == Z_OK) {
                 write_file(obj_path, compressed, compressed_len, 0444);
             }
             free(compressed);
@@ -239,15 +240,16 @@ bool valid_hdr(const unsigned char* data, idx_hdr_t* hdr) {
 bool valid_chksum(const unsigned char* data, int size) {
     unsigned char hash[SHA_DIGEST_LENGTH];
     SHA1(data, size - SHA_DIGEST_LENGTH, hash);
-    return memcmp(hash, data + size - SHA_DIGEST_LENGTH, SHA_DIGEST_LENGTH) == 0;
+    return memcmp(hash, data + size - SHA_DIGEST_LENGTH, SHA_DIGEST_LENGTH) ==
+           0;
 }
 
 idx_entry_t* parse_entry(const unsigned char* data, int off) {
-    idx_entry_t *e = calloc(1, sizeof(idx_entry_t));
+    idx_entry_t* e = calloc(1, sizeof(idx_entry_t));
     if (!e) return NULL;
 
     const unsigned char* ed = data + off;
-    
+
     e->ctime_s = ntohl(*(uint32_t*)(ed + 0));
     e->ctime_n = ntohl(*(uint32_t*)(ed + 4));
     e->mtime_s = ntohl(*(uint32_t*)(ed + 8));
@@ -258,7 +260,7 @@ idx_entry_t* parse_entry(const unsigned char* data, int off) {
     e->uid = ntohl(*(uint32_t*)(ed + 28));
     e->gid = ntohl(*(uint32_t*)(ed + 32));
     e->fsize = ntohl(*(uint32_t*)(ed + 36));
-    
+
     memcpy(e->sha1, ed + 40, SHA_DIGEST_LENGTH);
     e->flags = ntohs(*(uint16_t*)(ed + 60));
     e->path = strdup((char*)(ed + 62));
@@ -268,8 +270,8 @@ idx_entry_t* parse_entry(const unsigned char* data, int off) {
 
 idx_entries_t* read_idx() {
     int size;
-    unsigned char *data;
-    
+    unsigned char* data;
+
     if (read_file(".git/index", &data, &size) != 0) {
         return NULL;
     }
@@ -286,7 +288,7 @@ idx_entries_t* read_idx() {
         return NULL;
     }
 
-    idx_entries_t *ents = calloc(1, sizeof(idx_entries_t));
+    idx_entries_t* ents = calloc(1, sizeof(idx_entries_t));
     if (!ents) {
         free(data);
         return NULL;
@@ -303,7 +305,7 @@ idx_entries_t* read_idx() {
             free(data);
             return NULL;
         }
-        
+
         // Calculate next entry offset (8-byte aligned)
         off += ((62 + strlen(ents->entries[i]->path) + 8) / 8) * 8;
     }
@@ -313,11 +315,11 @@ idx_entries_t* read_idx() {
 }
 
 void list_files(bool details) {
-    idx_entries_t *ents = read_idx();
+    idx_entries_t* ents = read_idx();
     if (!ents) return;
 
     for (size_t i = 0; i < ents->size; i++) {
-        idx_entry_t *e = ents->entries[i];
+        idx_entry_t* e = ents->entries[i];
         if (details) {
             uint16_t stage = (e->flags >> 12) & 0x3;
             printf("%06o ", e->mode);
@@ -327,14 +329,14 @@ void list_files(bool details) {
             printf("%s\n", e->path);
         }
     }
-    
+
     free_entries(ents);
 }
 
 void collect_files(const char* base, char*** files, int* cnt) {
     const int cap = 16;
     int stk_cap = cap;
-    char **stk = calloc(stk_cap, sizeof(char*));
+    char** stk = calloc(stk_cap, sizeof(char*));
     stk[0] = strdup(base);
     int stk_sz = 1;
 
@@ -344,19 +346,20 @@ void collect_files(const char* base, char*** files, int* cnt) {
 
     while (stk_sz > 0) {
         stk_sz--;
-        char *cdir = stk[stk_sz];
-        DIR *dir = opendir(cdir);
-        
+        char* cdir = stk[stk_sz];
+        DIR* dir = opendir(cdir);
+
         if (!dir) {
             free(cdir);
             continue;
         }
 
-        struct dirent *ent;
-        char path[PATH_BUF_SIZE] = {0}; 
-        
+        struct dirent* ent;
+        char path[PATH_BUF_SIZE] = {0};
+
         while ((ent = readdir(dir)) != NULL) {
-            if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
+            if (strcmp(ent->d_name, ".") == 0 ||
+                strcmp(ent->d_name, "..") == 0) {
                 continue;
             }
 
@@ -389,17 +392,17 @@ void collect_files(const char* base, char*** files, int* cnt) {
                 (*cnt)++;
             }
         }
-        
+
         free(cdir);
         closedir(dir);
     }
-    
+
     free(stk);
 }
 
-void print_modified(char **paths, int pcnt, idx_entries_t* idx) {
+void print_modified(char** paths, int pcnt, idx_entries_t* idx) {
     bool hdr = false;
-    
+
     for (int i = 0; i < pcnt; i++) {
         for (size_t j = 0; j < idx->size; j++) {
             if (strcmp(paths[i], idx->entries[j]->path) != 0) {
@@ -407,13 +410,14 @@ void print_modified(char **paths, int pcnt, idx_entries_t* idx) {
             }
 
             int size;
-            unsigned char *data;
+            unsigned char* data;
             if (read_file(paths[i], &data, &size) != 0) {
                 continue;
             }
 
             unsigned char* hash = hash_obj(data, size, "blob", false);
-            bool mod = memcmp(hash, idx->entries[j]->sha1, SHA_DIGEST_LENGTH) != 0;
+            bool mod =
+                memcmp(hash, idx->entries[j]->sha1, SHA_DIGEST_LENGTH) != 0;
 
             if (mod) {
                 if (!hdr) {
@@ -430,19 +434,19 @@ void print_modified(char **paths, int pcnt, idx_entries_t* idx) {
     }
 }
 
-void print_new(char **paths, int pcnt, idx_entries_t* idx) {
+void print_new(char** paths, int pcnt, idx_entries_t* idx) {
     bool hdr = false;
-    
+
     for (int i = 0; i < pcnt; i++) {
         bool found = false;
-        
+
         for (size_t j = 0; j < idx->size; j++) {
             if (strcmp(paths[i], idx->entries[j]->path) == 0) {
                 found = true;
-                break; 
+                break;
             }
         }
-        
+
         if (!found) {
             if (!hdr) {
                 printf("  new files:\n");
@@ -453,19 +457,19 @@ void print_new(char **paths, int pcnt, idx_entries_t* idx) {
     }
 }
 
-void print_deleted(char **paths, int pcnt, idx_entries_t* idx) {
+void print_deleted(char** paths, int pcnt, idx_entries_t* idx) {
     bool hdr = false;
-    
+
     for (size_t i = 0; i < idx->size; i++) {
         bool found = false;
-        
+
         for (int j = 0; j < pcnt; j++) {
             if (strcmp(idx->entries[i]->path, paths[j]) == 0) {
                 found = true;
                 break;
             }
         }
-        
+
         if (!found) {
             if (!hdr) {
                 printf("  deleted files:\n");
@@ -480,7 +484,7 @@ void show_status() {
     int fcnt = 0;
     char** paths = NULL;
     collect_files(".", &paths, &fcnt);
-    
+
     idx_entries_t* idx = read_idx();
     if (!idx) {
         free_str_arr(paths, fcnt);
