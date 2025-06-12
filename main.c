@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -56,6 +57,11 @@ bool dir_exists(const char* path) {
     return (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
 }
 
+bool file_exists(const char* path) {
+    struct stat st;
+    return (stat(path, &st) == 0 && S_ISREG(st.st_mode));
+}
+
 void mk_dir(const char* dir) {
     if (mkdir(dir, 0775) != 0) {
         err("mkdir error");
@@ -89,21 +95,26 @@ void free_entry(idx_entry_t* e) {
     }
 }
 
+void free_entries(idx_entry_t** entries, size_t entries_size) {
+    if (entries == NULL) return;
+    for (size_t i = 0; i < entries_size; i++) {
+        free_entry(entries[i]);
+    }
+    free(entries);
+}
+
 void free_idx(idx_t* idx) {
     if (!idx) return;
-    for (size_t i = 0; i < idx->hdr->cnt; i++) {
-        free_entry(idx->entries[i]);
-    }
+    free_entries(idx->entries, idx->hdr->cnt);
     if (idx->hdr) free(idx->hdr);
     if (idx->ext) free(idx->ext);
-    free(idx->entries);
     free(idx);
 }
 
 int read_file(const char* path, unsigned char** data, int* size) {
     int fd = open(path, O_RDONLY);
     if (fd == -1) {
-        perror("open error");
+        fprintf(stderr, "'%s' failed to read: %s\n", path, strerror(errno));
         return -1;
     }
 
@@ -140,7 +151,8 @@ int write_file(const char* path, const unsigned char* data,
 
     int fd = open(path, O_CREAT | O_RDWR, mode);
     if (fd == -1) {
-        err("open error");
+        fprintf(stderr, "'%s' failed to write: %s\n", path, strerror(errno));
+        return -1;
     }
 
     ssize_t wb = write(fd, data, size);
@@ -185,10 +197,8 @@ unsigned char* hash_obj(const unsigned char* data, size_t data_size,
         char dir_path[32];
         char obj_path[64];
 
-        snprintf(dir_path, sizeof(dir_path), ".git/objects/%02x",
-                 result_hash[0]);
-        snprintf(obj_path, sizeof(obj_path), "%s/%02x", dir_path,
-                 result_hash[1]);
+        snprintf(dir_path, sizeof(dir_path), ".git/objects/%02x", result_hash[0]);
+        snprintf(obj_path, sizeof(obj_path), "%s/%02x", dir_path, result_hash[1]);
 
         char hex_suffix[40] = {0};
         for (int i = 2; i < SHA_DIGEST_LENGTH; i++) {
@@ -198,6 +208,10 @@ unsigned char* hash_obj(const unsigned char* data, size_t data_size,
 
         if (!dir_exists(dir_path)) {
             mk_dir(dir_path);
+        }
+        if (file_exists(obj_path)) {
+            free(combined_data);
+            return result_hash;
         }
 
         size_t compressed_len = total_size * 2;
@@ -573,14 +587,115 @@ int write_idx(idx_t *idx) {
     return 0;
 }
 
-int main() {
-    printf("read before my write:\n");
-    list_files(true);
+idx_entry_t* copy_entry(const idx_entry_t* src) {
+    if (!src) return NULL;
+
+    idx_entry_t* dst = malloc(sizeof(idx_entry_t));
+    if (!dst) return NULL;
+
+    *dst = *src;
+
+    dst->path = strdup(src->path);
+    if (!dst->path) {
+        free(dst);
+        return NULL;
+    }
+
+    return dst;
+}
+
+int add_to_index(char** paths, size_t paths_cnt) {
     idx_t *idx = read_idx();
-    if (!idx) exit(1);
+    if (!idx) return -1;
+
+    size_t entries_cap = 4, entries_size = 0;
+    idx_entry_t** entries = malloc(entries_cap * sizeof(idx_entry_t*));
+    if (!entries) {
+        free_idx(idx);
+        return -1;
+    }
+
+    for (size_t j = 0; j < idx->hdr->cnt; j++) {
+        bool found = false;
+        for (size_t i = 0; i < paths_cnt; i++) {
+            if (strcmp(paths[i], idx->entries[j]->path) == 0) {
+                found = true;
+                break;
+            }
+        }
+        if (found) continue;
+
+        if (entries_size >= entries_cap) {
+            entries_cap *= 2;
+            idx_entry_t** tmp = realloc(entries, entries_cap * sizeof(idx_entry_t*));
+            if (!tmp) {
+                free_entries(entries, entries_size);
+                free_idx(idx);
+                return -1;
+            }
+            entries = tmp;
+        }
+
+        idx_entry_t* new_entry = copy_entry(idx->entries[j]);
+        if (!new_entry) {
+            free_entries(entries, entries_size);
+            free_idx(idx);
+            return -1;
+        }
+        entries[entries_size++] = new_entry;
+    }
+
+    for (size_t i = 0; i < paths_cnt; i++) {
+        int data_size = 0;
+        unsigned char *data = NULL;
+        read_file(paths[i], &data, &data_size);
+
+        unsigned char* raw_sha1 = hash_obj(data, data_size, "blob", true);
+
+        struct stat st;
+        stat(paths[i], &st);
+
+        idx_entry_t *ent = malloc(sizeof(idx_entry_t));
+        ent->ctime_s = st.st_ctime;
+        ent->ctime_n = 0;
+        ent->mtime_s = st.st_mtime;
+        ent->mtime_n = 0;
+        ent->dev = st.st_dev;
+        ent->ino = st.st_ino;
+        ent->mode = st.st_mode;
+        ent->uid = st.st_uid;
+        ent->gid = st.st_gid;
+        ent->fsize = st.st_size;
+        memcpy(ent->sha1, raw_sha1, SHA_DIGEST_LENGTH);
+        ent->flags = (uint16_t)strlen(paths[i]);
+        ent->path = strdup(paths[i]);
+
+        if (entries_size >= entries_cap) {
+            entries_cap *= 2;
+            idx_entry_t** tmp = realloc(entries, entries_cap * sizeof(idx_entry_t*));
+            if (!tmp) {
+                free_entries(entries, entries_size);
+                free_idx(idx);
+                return -1;
+            }
+            entries = tmp;
+        }
+
+        entries[entries_size++] = ent;
+    }
+    free_entries(idx->entries, idx->hdr->cnt);
+    idx->hdr->cnt = entries_size;
+    idx->entries = entries;
     write_idx(idx);
-    printf("\nread after my write:\n");
-    list_files(true);
     free_idx(idx);
+    return 0;
+}
+
+int main() {
+    int files_cnt = 0;
+    char **files = NULL;
+    collect_files(".", &files, &files_cnt);
+    add_to_index(files, files_cnt);
+    free_str_arr(files, files_cnt);
     return 0;
 }
