@@ -12,29 +12,13 @@
 #include <unistd.h>
 #include <zlib.h>
 
-#define SIG_SIZE 4
-#define VER_SIZE 4
-#define CNT_SIZE 4
-#define HDR_SIZE (SIG_SIZE + VER_SIZE + CNT_SIZE)
-
-#define CTIME_S_SIZE 4
-#define CTIME_N_SIZE 4
-#define MTIME_S_SIZE 4
-#define MTIME_N_SIZE 4
-#define DEV_SIZE 4
-#define INO_SIZE 4
-#define MODE_SIZE 4
-#define UID_SIZE 4
-#define GID_SIZE 4
-#define FSIZE_SIZE 4
-#define SHA1_SIZE SHA_DIGEST_LENGTH
-#define FLAGS_SIZE 2
-
 #define PATH_BUF_SIZE 4096
 #define HDR_BUF_SIZE 64
 
+#define HDR_SIZE 12
+
 typedef struct {
-    char sig[SIG_SIZE];
+    char sig[4];
     uint32_t ver;
     uint32_t cnt;
 } idx_hdr_t;
@@ -56,9 +40,11 @@ typedef struct {
 } idx_entry_t;
 
 typedef struct {
+    idx_hdr_t* hdr;
     idx_entry_t** entries;
-    size_t size;
-} idx_entries_t;
+    size_t ext_size;
+    uint8_t* ext;
+} idx_t;
 
 void err(const char* msg) {
     perror(msg);
@@ -77,9 +63,16 @@ void mk_dir(const char* dir) {
 }
 
 void print_sha1(const uint8_t sha1[SHA_DIGEST_LENGTH]) {
-    for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
         printf("%02x", sha1[i]);
     }
+}
+
+void sha1_to_hex(char *res, const uint8_t sha1[SHA_DIGEST_LENGTH]) {
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
+        sprintf(res + i * 2, "%02x", sha1[i]);
+    }
+    res[SHA_DIGEST_LENGTH * 2] = '\0'; 
 }
 
 void free_str_arr(char** arr, int cnt) {
@@ -96,14 +89,15 @@ void free_entry(idx_entry_t* e) {
     }
 }
 
-void free_entries(idx_entries_t* ents) {
-    if (!ents) return;
-
-    for (size_t i = 0; i < ents->size; i++) {
-        free_entry(ents->entries[i]);
+void free_idx(idx_t* idx) {
+    if (!idx) return;
+    for (size_t i = 0; i < idx->hdr->cnt; i++) {
+        free_entry(idx->entries[i]);
     }
-    free(ents->entries);
-    free(ents);
+    if (idx->hdr) free(idx->hdr);
+    if (idx->ext) free(idx->ext);
+    free(idx->entries);
+    free(idx);
 }
 
 int read_file(const char* path, unsigned char** data, int* size) {
@@ -141,8 +135,9 @@ int read_file(const char* path, unsigned char** data, int* size) {
     return 0;
 }
 
-int write_file(const char* path, const unsigned char* data, size_t size,
-               int mode) {
+int write_file(const char* path, const unsigned char* data,
+               size_t size, int mode) {
+
     int fd = open(path, O_CREAT | O_RDWR, mode);
     if (fd == -1) {
         err("open error");
@@ -221,27 +216,27 @@ unsigned char* hash_obj(const unsigned char* data, size_t data_size,
 }
 
 bool valid_hdr(const unsigned char* data, idx_hdr_t* hdr) {
-    memcpy(hdr->sig, data, SIG_SIZE);
+    memcpy(hdr->sig, data, 4);
     if (memcmp(hdr->sig, "DIRC", 4) != 0) {
         fprintf(stderr, "invalid index signature\n");
         return false;
     }
 
-    hdr->ver = ntohl(*(uint32_t*)(data + SIG_SIZE));
+    hdr->ver = ntohl(*(uint32_t*)(data + 4));
     if (hdr->ver != 2) {
         fprintf(stderr, "invalid index version\n");
         return false;
     }
 
-    hdr->cnt = ntohl(*(uint32_t*)(data + SIG_SIZE + VER_SIZE));
+    hdr->cnt = ntohl(*(uint32_t*)(data + 8));
     return true;
 }
 
 bool valid_chksum(const unsigned char* data, int size) {
     unsigned char hash[SHA_DIGEST_LENGTH];
     SHA1(data, size - SHA_DIGEST_LENGTH, hash);
-    return memcmp(hash, data + size - SHA_DIGEST_LENGTH, SHA_DIGEST_LENGTH) ==
-           0;
+    return memcmp(hash, data + size - SHA_DIGEST_LENGTH,
+                  SHA_DIGEST_LENGTH) == 0;
 }
 
 idx_entry_t* parse_entry(const unsigned char* data, int off) {
@@ -268,7 +263,7 @@ idx_entry_t* parse_entry(const unsigned char* data, int off) {
     return e;
 }
 
-idx_entries_t* read_idx() {
+idx_t* read_idx() {
     int size;
     unsigned char* data;
 
@@ -282,44 +277,48 @@ idx_entries_t* read_idx() {
         return NULL;
     }
 
-    idx_hdr_t hdr;
-    if (!valid_hdr(data, &hdr)) {
+    idx_hdr_t *hdr = malloc(HDR_SIZE);
+    if (!valid_hdr(data, hdr)) {
         free(data);
         return NULL;
     }
 
-    idx_entries_t* ents = calloc(1, sizeof(idx_entries_t));
-    if (!ents) {
+    idx_t* idx = calloc(1, sizeof(idx_t));
+    if (!idx) {
         free(data);
         return NULL;
     }
 
-    ents->entries = calloc(hdr.cnt, sizeof(idx_entry_t*));
-    ents->size = hdr.cnt;
+    idx->hdr = hdr;
+    idx->entries = calloc(hdr->cnt, sizeof(idx_entry_t*));
 
     int off = HDR_SIZE;
-    for (uint32_t i = 0; i < hdr.cnt; i++) {
-        ents->entries[i] = parse_entry(data, off);
-        if (!ents->entries[i]) {
-            free_entries(ents);
+    for (uint32_t i = 0; i < hdr->cnt; i++) {
+        idx->entries[i] = parse_entry(data, off);
+        if (!idx->entries[i]) {
+            free_idx(idx);
             free(data);
             return NULL;
         }
-
         // Calculate next entry offset (8-byte aligned)
-        off += ((62 + strlen(ents->entries[i]->path) + 8) / 8) * 8;
+        off += ((62 + strlen(idx->entries[i]->path) + 8) / 8) * 8;
     }
 
+    int ext_size = size - off - 20;
+    idx->ext = malloc(ext_size);
+    idx->ext_size = ext_size;
+    memcpy(idx->ext, data + off, ext_size);
+
     free(data);
-    return ents;
+    return idx;
 }
 
-void list_files(bool details) {
-    idx_entries_t* ents = read_idx();
-    if (!ents) return;
+int list_files(bool details) {
+    idx_t* idx = read_idx();
+    if (!idx) return -1;
 
-    for (size_t i = 0; i < ents->size; i++) {
-        idx_entry_t* e = ents->entries[i];
+    for (size_t i = 0; i < idx->hdr->cnt; i++) {
+        idx_entry_t* e = idx->entries[i];
         if (details) {
             uint16_t stage = (e->flags >> 12) & 0x3;
             printf("%06o ", e->mode);
@@ -330,7 +329,8 @@ void list_files(bool details) {
         }
     }
 
-    free_entries(ents);
+    free_idx(idx);
+    return 0;
 }
 
 void collect_files(const char* base, char*** files, int* cnt) {
@@ -400,11 +400,11 @@ void collect_files(const char* base, char*** files, int* cnt) {
     free(stk);
 }
 
-void print_modified(char** paths, int pcnt, idx_entries_t* idx) {
+void print_modified(char** paths, int pcnt, idx_t* idx) {
     bool hdr = false;
 
     for (int i = 0; i < pcnt; i++) {
-        for (size_t j = 0; j < idx->size; j++) {
+        for (size_t j = 0; j < idx->hdr->cnt; j++) {
             if (strcmp(paths[i], idx->entries[j]->path) != 0) {
                 continue;
             }
@@ -434,13 +434,13 @@ void print_modified(char** paths, int pcnt, idx_entries_t* idx) {
     }
 }
 
-void print_new(char** paths, int pcnt, idx_entries_t* idx) {
+void print_new(char** paths, int pcnt, idx_t* idx) {
     bool hdr = false;
 
     for (int i = 0; i < pcnt; i++) {
         bool found = false;
 
-        for (size_t j = 0; j < idx->size; j++) {
+        for (size_t j = 0; j < idx->hdr->cnt; j++) {
             if (strcmp(paths[i], idx->entries[j]->path) == 0) {
                 found = true;
                 break;
@@ -457,10 +457,10 @@ void print_new(char** paths, int pcnt, idx_entries_t* idx) {
     }
 }
 
-void print_deleted(char** paths, int pcnt, idx_entries_t* idx) {
+void print_deleted(char** paths, int pcnt, idx_t* idx) {
     bool hdr = false;
 
-    for (size_t i = 0; i < idx->size; i++) {
+    for (size_t i = 0; i < idx->hdr->cnt; i++) {
         bool found = false;
 
         for (int j = 0; j < pcnt; j++) {
@@ -480,28 +480,107 @@ void print_deleted(char** paths, int pcnt, idx_entries_t* idx) {
     }
 }
 
-void show_status() {
+int show_status() {
     int fcnt = 0;
     char** paths = NULL;
     collect_files(".", &paths, &fcnt);
 
-    idx_entries_t* idx = read_idx();
+    idx_t* idx = read_idx();
     if (!idx) {
         free_str_arr(paths, fcnt);
-        return;
+        return -1;
     }
 
     print_modified(paths, fcnt, idx);
     printf("\n");
     print_new(paths, fcnt, idx);
     printf("\n");
-    print_delelted(paths, fcnt, idx);
+    print_deleted(paths, fcnt, idx);
 
-    free_entries(idx);
+    free_idx(idx);
     free_str_arr(paths, fcnt);
+    return 0;
+}
+
+int write_idx(idx_t *idx) {
+    int idx_size = HDR_SIZE;
+    for (size_t i = 0; i < idx->hdr->cnt; i++) {
+        int path_len = strlen(idx->entries[i]->path);
+        int entry_len = ((62 + path_len + 8) / 8) * 8;
+        idx_size += entry_len;
+    }
+    idx_size += idx->ext_size;
+    idx_size += 20; 
+
+    uint8_t *index_data = calloc(idx_size, 1);
+
+    memcpy(index_data, idx->hdr->sig, 4);
+    uint32_t ver = htonl(idx->hdr->ver);
+    memcpy(index_data + 4, &ver, 4);
+    uint32_t cnt = htonl(idx->hdr->cnt);
+    memcpy(index_data + 8, &cnt, 4);
+
+    int p = HDR_SIZE;
+    for (size_t i = 0; i < idx->hdr->cnt; i++) {
+        uint32_t ctime_s = htonl(idx->entries[i]->ctime_s);
+        memcpy(index_data + p, &ctime_s, 4);
+
+        uint32_t ctime_n = htonl(idx->entries[i]->ctime_n);
+        memcpy(index_data + p + 4, &ctime_n, 4);
+
+        uint32_t mtime_s = htonl(idx->entries[i]->mtime_s);
+        memcpy(index_data + p + 8, &mtime_s, 4);
+
+        uint32_t mtime_n = htonl(idx->entries[i]->mtime_n);
+        memcpy(index_data + p + 12, &mtime_n, 4);
+
+        uint32_t dev = htonl(idx->entries[i]->dev);
+        memcpy(index_data + p + 16, &dev, 4);
+
+        uint32_t ino = htonl(idx->entries[i]->ino);
+        memcpy(index_data + p + 20, &ino, 4);
+
+        uint32_t mode = htonl(idx->entries[i]->mode);
+        memcpy(index_data + p + 24, &mode, 4);
+
+        uint32_t uid = htonl(idx->entries[i]->uid);
+        memcpy(index_data + p + 28, &uid, 4);
+
+        uint32_t gid = htonl(idx->entries[i]->gid);
+        memcpy(index_data + p + 32, &gid, 4);
+
+        uint32_t fsize = htonl(idx->entries[i]->fsize);
+        memcpy(index_data + p + 36, &fsize, 4);
+
+        memcpy(index_data + p + 40, idx->entries[i]->sha1, SHA_DIGEST_LENGTH);
+
+        uint16_t flags = htons(idx->entries[i]->flags);
+        memcpy(index_data + p + 60, &flags, 2);
+
+        strcpy((char*)(index_data + p + 62), idx->entries[i]->path);
+
+        int path_len = strlen(idx->entries[i]->path);
+        int entry_len = ((62 + path_len + 8) / 8) * 8;
+        p += entry_len;
+    }
+    
+    memcpy(index_data + p, idx->ext, idx->ext_size);
+
+    SHA1(index_data, idx_size - 20, index_data + idx_size - 20);
+
+    write_file(".git/index", index_data, idx_size, 0644);
+    free(index_data);
+    return 0;
 }
 
 int main() {
-    show_status();
+    printf("read before my write:\n");
+    list_files(true);
+    idx_t *idx = read_idx();
+    if (!idx) exit(1);
+    write_idx(idx);
+    printf("\nread after my write:\n");
+    list_files(true);
+    free_idx(idx);
     return 0;
 }
