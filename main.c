@@ -277,10 +277,38 @@ idx_entry_t* parse_entry(const unsigned char* data, int off) {
     return e;
 }
 
+int init_index_file() {
+    int fd = open(".git/index", O_CREAT | O_RDWR, 0664);
+    if (fd == -1) {
+        fprintf(stderr, "'%s' failed to write: %s\n", ".git/index", strerror(errno));
+        return -1;
+    }
+
+    uint8_t index_data[32] = {0};
+
+    memcpy(index_data, "DIRC", 4);
+    uint32_t ver = htonl(2);
+    memcpy(index_data + 4, &ver, 4);
+    uint32_t cnt = htonl(0);
+    memcpy(index_data + 8, &cnt, 4);
+
+    SHA1(index_data, 12, index_data + 12);
+
+    ssize_t written = write(fd, index_data, 32);
+    close(fd);
+
+    return (written == 32) ? 0 : -1;
+}
+
 idx_t* read_idx() {
     int size;
     unsigned char* data;
 
+    if (!file_exists(".git/index")) {
+        if (init_index_file() == -1) {
+            return NULL;
+        }
+    }
     if (read_file(".git/index", &data, &size) != 0) {
         return NULL;
     }
@@ -669,6 +697,7 @@ int add_to_index(char** paths, size_t paths_cnt) {
         memcpy(ent->sha1, raw_sha1, SHA_DIGEST_LENGTH);
         ent->flags = (uint16_t)strlen(paths[i]);
         ent->path = strdup(paths[i]);
+        free(raw_sha1);
 
         if (entries_size >= entries_cap) {
             entries_cap *= 2;
