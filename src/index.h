@@ -2,6 +2,7 @@
 #define INDEX_H
 
 #include <stdint.h>
+#include <openssl/sha.h>
 
 #define HDR_SIZE 12
 

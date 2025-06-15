@@ -1,7 +1,6 @@
-#include <arpa/inet.h>
 #include <dirent.h>
 #include <fcntl.h>
-#include <openssl/sha.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -10,7 +9,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <zlib.h>
 
 #include "utils.h"
 

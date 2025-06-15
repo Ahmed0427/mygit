@@ -1,17 +1,12 @@
-#include <arpa/inet.h>
-#include <dirent.h>
-#include <fcntl.h>
-#include <openssl/sha.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <zlib.h>
+
+#include "index.h"
+#include "status.h"
+#include "utils.h"
 
 #define PATH_BUF_SIZE 4096
 
@@ -27,7 +22,66 @@ void init_repo() {
     printf("initialized empty repository\n");
 }
 
-int main() {
+void help_msg() {
+    printf("init      Create an empty Git repository\n");
+    printf("ls-files  Prints all files in the index (use -s for details)\n");
+    printf("status    Compare the files in the index and directory tree\n");
+    printf("add       Add file contents to the index\n");
+}
+
+int main(int argc, char** argv) {
+    if (argc == 1) {
+        help_msg();
+    } else if (strcmp(argv[1], "help") == 0) {
+        if (argc > 2) {
+            fprintf(stderr, "ERROR: too many args\n");
+            exit(1);
+        } else {
+            help_msg();
+        }
+    } else if (strcmp(argv[1], "init") == 0) {
+        if (argc > 2) {
+            fprintf(stderr, "ERROR: too many args\n");
+            exit(1);
+        } else {
+            init_repo();
+        }
+    } else if (strcmp(argv[1], "ls-files") == 0) {
+        if (argc > 3) {
+            fprintf(stderr, "ERROR: too many args\n");
+            exit(1);
+        } else if (argc == 3) {
+            if (strcmp(argv[2], "-s") != 0) {
+                fprintf(stderr, "ERROR: unknown flag '%s'\n", argv[2]);
+                exit(1);
+            }
+            list_files(true);
+
+        } else {
+            list_files(false);
+        }
+    } else if (strcmp(argv[1], "status") == 0) {
+        if (argc > 2) {
+            fprintf(stderr, "ERROR: too many args\n");
+            exit(1);
+        } else {
+            show_status();
+        }
+    } else if (strcmp(argv[1], "add") == 0) {
+        for (int i = 2; i < argc; i++) {
+            if (dir_exists(argv[i])) {
+                int cnt = 0;
+                char **paths = NULL;
+                collect_files(argv[i], &paths, &cnt);
+                add_to_index(paths, cnt);
+            } else if (file_exists(argv[i])) {
+                char* paths[] = {argv[i]}; 
+                add_to_index(paths, 1);
+            } else {
+                fprintf(stderr, "ERROR: file '%s' doesn't exit\n", argv[i]);
+            }
+        }
+    }
 
     return 0;
 }
