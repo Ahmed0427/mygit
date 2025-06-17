@@ -4,9 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "utils.h"
 #include "index.h"
 #include "status.h"
-#include "utils.h"
+#include "commit.h"
 
 #define PATH_BUF_SIZE 4096
 
@@ -81,6 +82,8 @@ int main(int argc, char** argv) {
                 fprintf(stderr, "ERROR: file '%s' doesn't exit\n", argv[i]);
             }
         }
+    } else if (strcmp(argv[1], "commit") == 0) {
+        write_tree();        
     }
 
     return 0;

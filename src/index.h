@@ -2,6 +2,7 @@
 #define INDEX_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <openssl/sha.h>
 
 #define HDR_SIZE 12
@@ -43,6 +44,8 @@ void free_entries(idx_entry_t** entries, size_t entries_size);
 void free_idx(idx_t* idx);
 
 idx_t* read_idx();
+
+idx_entry_t* copy_entry(const idx_entry_t* src);
 
 int list_files(bool details);
 

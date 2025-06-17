@@ -22,9 +22,12 @@ void free_str_arr(char** arr, int cnt);
 
 int read_file(const char* path, unsigned char** data, int* size);
 
-int write_file(const char* path, const unsigned char* data,
-               size_t size, int mode);
+int write_file(const char* path, const unsigned char* data, size_t size, int mode);
 
 void collect_files(const char* base, char*** files, int* cnt);
+
+char** split_str(char* str, const char* del, size_t* toks_cnt);
+
+char* join_str(char** toks, size_t count, const char* del);
 
 #endif
