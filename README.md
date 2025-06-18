@@ -35,6 +35,7 @@ mygit init
 mygit add something.txt
 mygit ls-files -s
 mygit status
+mygit commit
 ```
 
 _Note: Replace `/path/to/mygit` with wherever you dumped this thing._
