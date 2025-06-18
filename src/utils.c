@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,16 +35,20 @@ void mk_dir(const char* dir) {
 }
 
 void print_sha1(const uint8_t sha1[SHA_DIGEST_LENGTH]) {
+    assert(sha1 != NULL);
     for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
         printf("%02x", sha1[i]);
     }
 }
 
-void sha1_to_hex(char *res, const uint8_t sha1[SHA_DIGEST_LENGTH]) {
+char* sha1_to_hex(const uint8_t sha1[SHA_DIGEST_LENGTH]) {
+    assert(sha1 != NULL);
+    char* res = malloc(SHA_DIGEST_LENGTH * 2 + 1);
     for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
         sprintf(res + i * 2, "%02x", sha1[i]);
     }
     res[SHA_DIGEST_LENGTH * 2] = '\0'; 
+    return res;
 }
 
 void free_str_arr(char** arr, int cnt) {

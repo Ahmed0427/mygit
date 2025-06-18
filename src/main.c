@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
             }
         }
     } else if (strcmp(argv[1], "commit") == 0) {
-        write_tree();        
+        commit("ahmed", "testing my commit");        
     }
 
     return 0;

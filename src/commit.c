@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
 
 #include "index.h"
 #include "objects.h"
@@ -140,7 +141,6 @@ char* write_tree_helper(entries_t* entries, size_t depth) {
     return res_sha1;
 }
 
-
 char *write_tree() {
     idx_t *idx = read_idx();     
     entries_t* entries = malloc(sizeof(entries_t));
@@ -157,10 +157,97 @@ char *write_tree() {
     free(entries);
     free_idx(idx);
 
-    if (sha1_raw != NULL) {
-        print_sha1((uint8_t*)sha1_raw);
-    }
-    free(sha1_raw);
+    return sha1_raw;
+}
 
-    return NULL;
+char* get_formatted_time() {
+    time_t raw_time;
+    struct tm *local_tm;
+    int utc_offset;
+    char sign;
+    int hours, minutes;
+
+    time(&raw_time);
+    local_tm = localtime(&raw_time);
+
+    utc_offset = (int)(mktime(local_tm) - mktime(gmtime(&raw_time)));
+    sign = utc_offset >= 0 ? '+' : '-';
+    utc_offset = utc_offset >= 0 ? utc_offset : -utc_offset;
+
+    hours = utc_offset / 3600;
+    minutes = (utc_offset % 3600) / 60;
+
+    char *result = malloc(32);
+    if (!result) return NULL;
+
+    snprintf(result, 32, "%ld %c%02d%02d", (long)raw_time, sign, hours, minutes);
+    return result;
+}
+
+char* get_parent_hash() {
+    int hash_sz = 0;
+    unsigned char *hash = NULL;
+    read_file(".git/refs/heads/main", &hash, &hash_sz);
+    return (char*)hash;
+}
+
+void commit(char* author, char* msg) {
+    char* tree_hash_raw = write_tree(); 
+    char* tree_hash = sha1_to_hex((uint8_t*)tree_hash_raw);
+    assert(tree_hash != NULL);
+    free(tree_hash_raw);
+    
+    char* parent_hash = get_parent_hash();
+
+    char* time = get_formatted_time();
+
+    size_t data_sz = 0;
+    char tree_hash_line[64] = {0};
+    snprintf(tree_hash_line, sizeof(tree_hash_line), "tree %s\n", tree_hash);
+    data_sz += strlen(tree_hash_line);
+
+    char parent_hash_line[64] = {0};
+    if (parent_hash && strlen(parent_hash) > 0) {
+        snprintf(parent_hash_line, sizeof(parent_hash_line),
+                 "parent %s\n", parent_hash);
+    }
+    data_sz += strlen(parent_hash_line);
+
+    char author_line[1024] = {0};
+    snprintf(author_line, sizeof(author_line), "author %s %s\n", author, time);
+    data_sz += strlen(author_line);
+
+    char committer_line[1024] = {0};
+    snprintf(committer_line, sizeof(committer_line),
+             "committer %s %s\n", author, time);
+
+    data_sz += strlen(committer_line);
+    data_sz += strlen(msg) + 3;
+
+    char* data = calloc(data_sz, sizeof(char));
+    assert(data != NULL);
+
+    strcat(data, tree_hash_line);
+    strcat(data, parent_hash_line);
+    strcat(data, author_line);
+    strcat(data, committer_line);
+    strcat(data, "\n");
+    strcat(data, msg);
+    strcat(data, "\n");
+
+    char* commit_hash_raw = (char*)hash_obj((unsigned char*)data,
+                            data_sz, "commit", true);
+    char* commit_hash = sha1_to_hex((uint8_t*)commit_hash_raw);
+    assert(commit_hash != NULL);
+    free(commit_hash_raw);
+
+    write_file(".git/refs/heads/main", (unsigned char*)commit_hash, 40, 0644);
+
+    printf("committed to main\n");
+
+    free(data);
+    free(commit_hash);
+    free(tree_hash);
+    free(parent_hash);
+    free(time);
 }

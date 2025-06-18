@@ -16,7 +16,7 @@ void mk_dir(const char* dir);
 
 void print_sha1(const uint8_t sha1[SHA_DIGEST_LENGTH]);
 
-void sha1_to_hex(char *res, const uint8_t sha1[SHA_DIGEST_LENGTH]);
+char* sha1_to_hex(const uint8_t sha1[SHA_DIGEST_LENGTH]);
 
 void free_str_arr(char** arr, int cnt);
 
