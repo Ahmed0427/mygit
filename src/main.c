@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <regex.h>
 
 #include "utils.h"
 #include "index.h"
@@ -24,10 +25,13 @@ void init_repo() {
 }
 
 void help_msg() {
-    printf("init      Create an empty Git repository\n");
-    printf("ls-files  Prints all files in the index (use -s for details)\n");
-    printf("status    Compare the files in the index and directory tree\n");
-    printf("add       Add file contents to the index\n");
+    printf("mygit commands:\n");
+    printf("  init                                        Init repo\n");
+    printf("  add <paths...>                              Add files/dirs to index\n");
+    printf("  ls-files [-s]                               List index files (-s = detailed)\n");
+    printf("  status                                      Show index vs working tree\n");
+    printf("  commit -m MESSAGE --author=\"NAME <EMAIL>\"   Commit with message and author\n");
+    printf("  help                                        Show this message\n");
 }
 
 int main(int argc, char** argv) {
@@ -83,8 +87,36 @@ int main(int argc, char** argv) {
             }
         }
     } else if (strcmp(argv[1], "commit") == 0) {
-        commit("ahmed", "testing my commit");        
-    }
+        char *author = NULL;
+        char *message = NULL;
+        for (int i = 2; i < argc; i++) {
+            if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) {
+                message = argv[++i];
+            } else if (strncmp(argv[i], "--author=", 9) == 0) {
+                author = argv[i] + 9;
+            }
+        }
 
+        if (!message || !author) {
+            fprintf(stderr, "Usage: mygit commit -m MESSAGE --author=\"NAME <EMAIL>\"\n");
+            exit(1);
+        }
+
+        int reti;
+        regex_t regex;
+        reti = regcomp(&regex, "^[^\"]* <[^@<>]+@[^@<>]+\\.[^@<>]+>$", REG_EXTENDED);
+        if (reti) {
+            fprintf(stderr, "Could not compile regex\n");
+            exit(1);
+        }
+        reti = regexec(&regex, author, 0, NULL, 0);
+        if (reti) {
+            fprintf(stderr, "Invalid author format. Expected: \"NAME <EMAIL>\"\n");
+            exit(1);
+        }
+        regfree(&regex);
+
+        commit(author, message);        
+    }
     return 0;
 }
