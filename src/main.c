@@ -18,6 +18,8 @@ void init_repo() {
     mk_dir(".git/refs");
     mk_dir(".git/refs/heads");
 
+    write_file(".git/refs/heads/main", (const unsigned char*)"", 0, 0664);
+
     const char* head = "ref: refs/heads/main";
     write_file(".git/HEAD", (const unsigned char*)head, strlen(head), 0664);
 
