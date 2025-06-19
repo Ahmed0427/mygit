@@ -1,7 +1,9 @@
 # mygit
 
-Ever thought,  “Why use Git when you can write your own and regret it?”
-I did. So I made **mygit** — a Git clone in C. Works fine... until it doesn’t.
+Thought Git was overkill? Same.
+So I built mygit, a duct-tape Git clone in C.
+It stages, it commits, it mostly works.
+Use at your own risk
   
 ## How to Run
 
@@ -25,17 +27,16 @@ make
 Add the repo directory to your `PATH` so your terminal can find this beautiful mess:
 
 ```bash
-export PATH="$PATH:/path/to/mygit"
+export PATH="$PATH:/path/to/mygit" # Replace /path/to/mygit with your actual path
 ```
 
 Then try it:
 
 ```bash
-mygit init
-mygit add something.txt
-mygit ls-files -s
-mygit status
-mygit commit
+mygit init                                        Init repo  
+mygit add <paths...>                              Add files/dirs to index  
+mygit ls-files [-s]                               List index files (-s = detailed)  
+mygit status                                      Show index vs working tree  
+mygit commit -m MESSAGE --author="NAME <EMAIL>"   Commit with message and author  
+mygit help                                        Show this message  
 ```
-
-_Note: Replace `/path/to/mygit` with wherever you dumped this thing._
