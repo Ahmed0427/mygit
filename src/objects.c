@@ -1,4 +1,8 @@
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <assert.h>
+#include <string.h>
 #include <zlib.h>
 
 #include "objects.h"
@@ -60,3 +64,102 @@ unsigned char* hash_obj(const unsigned char* data, size_t data_size,
     return result_hash;
 }
 
+char* get_obj_data(char* hash) {
+    assert(hash != NULL);
+    if (strlen(hash) != 40) {
+        return NULL;
+    }
+
+    char obj_path[64] = {0};
+    strcat(obj_path, ".git/objects/");
+    strncat(obj_path, hash, 2);
+    strcat(obj_path, "/");
+    strncat(obj_path, hash + 2, 38);
+
+    if (!file_exists(obj_path)) {
+        fprintf(stderr, "ERROR: Not a valid object name %s\n", hash);
+        exit(1);
+    }
+
+    unsigned char* zdata = NULL;
+    int zdata_sz = 0;
+
+    if (read_file(obj_path, &zdata, &zdata_sz) != 0) {
+        fprintf(stderr, "Failed to read object file\n");
+        exit(1);
+    }
+
+    assert(zdata != NULL);
+    assert(zdata_sz > 0);
+
+    uLongf data_sz = zdata_sz * 5;
+    char* data = malloc(data_sz);
+    if (!data) {
+        perror("malloc for decompressed data");
+        free(zdata);
+        exit(1);
+    }
+
+    int res = uncompress((Bytef*)data, &data_sz, zdata, zdata_sz);
+    if (res != Z_OK) {
+        fprintf(stderr, "Decompression failed: %d\n", res);
+        free(data);
+        free(zdata);
+        exit(1);
+    }
+
+    free(zdata);  
+    return data;
+}
+
+void print_tree_entries(char* content) {
+    char* p = content;
+
+    while (*p) {
+        char* mode = p;
+        char* before_name = strchr(p, ' ');
+        assert(before_name != NULL);
+        *before_name = '\0';
+
+        char* name = before_name + 1;
+        char* before_hash = strchr(name, '\0');
+        assert(before_hash != NULL);
+        char* hash = (char*)sha1_to_hex((uint8_t*)before_hash + 1);
+
+        char* data = get_obj_data(hash);
+        assert(data != NULL);
+
+        char *type = strtok(data, " "); 
+
+        printf("%s %s %s    %s\n", mode, type, hash, name);
+
+        p = p + strlen(mode) + strlen(name) + 22;
+        free(data);
+    }
+}
+
+void cat_file(char* hash) {
+    char* data = get_obj_data(hash);
+    if (data == NULL) {
+        fprintf(stderr, "ERROR: Not a valid object name %s", hash);
+        exit(1);
+    }
+
+    char *type = strtok(data, " "); 
+    char *size_str = strtok(NULL, " ");
+    printf("type: %s\n", type);
+    printf("size: %s\n", size_str);
+    printf("\n");
+
+    char* content = data + strlen(type) + strlen(size_str) + 2;
+    
+    if (strcmp(type, "tree") == 0) {
+        print_tree_entries(content);         
+    } else {
+        printf("%s", content);
+    }
+
+    free(data);
+    printf("\n");
+
+}

@@ -9,6 +9,7 @@
 #include "index.h"
 #include "status.h"
 #include "commit.h"
+#include "objects.h"
 
 #define PATH_BUF_SIZE 4096
 
@@ -29,7 +30,9 @@ void init_repo() {
 void help_msg() {
     printf("mygit commands:\n");
     printf("  init                                        Init repo\n");
+    printf("  cat-file <sha1>                             Prints the content of the repo obj\n");
     printf("  add <paths...>                              Add files/dirs to index\n");
+    printf("  cat-file <obj-hash>                         Print content for repo obj\n");
     printf("  ls-files [-s]                               List index files (-s = detailed)\n");
     printf("  status                                      Show index vs working tree\n");
     printf("  commit -m MESSAGE --author=\"NAME <EMAIL>\"   Commit with message and author\n");
@@ -88,6 +91,16 @@ int main(int argc, char** argv) {
             } else {
                 fprintf(stderr, "ERROR: file '%s' doesn't exit\n", argv[i]);
             }
+        }
+    } else if (strcmp(argv[1], "cat-file") == 0) {
+        if (argc > 3) {
+            fprintf(stderr, "ERROR: too many args\n");
+            exit(1);
+        } else if (argc == 3) {
+            cat_file(argv[2]);
+        } else {
+            fprintf(stderr, "Usage: cat-file <obj-hash>\n");
+            exit(1);
         }
     } else if (strcmp(argv[1], "commit") == 0) {
         char *author = NULL;
