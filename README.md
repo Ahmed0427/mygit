@@ -1,8 +1,11 @@
 # mygit
 
 Thought Git was overkill? Same.
+
 So I built mygit, a duct-tape Git clone in C.
+
 It stages, it commits, it mostly works.
+
 Use at your own risk
   
 ## How to Run
