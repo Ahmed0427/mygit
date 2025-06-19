@@ -38,6 +38,7 @@ Then try it:
 ```bash
 mygit init                                        Init repo  
 mygit add <paths...>                              Add files/dirs to index  
+mygit cat-file <sha1>                             Prints the content of the repo obj 
 mygit ls-files [-s]                               List index files (-s = detailed)  
 mygit status                                      Show index vs working tree  
 mygit commit -m MESSAGE --author="NAME <EMAIL>"   Commit with message and author  
