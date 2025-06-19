@@ -61,7 +61,8 @@ void free_str_arr(char** arr, int cnt) {
 int read_file(const char* path, unsigned char** data, int* size) {
     int fd = open(path, O_RDONLY);
     if (fd == -1) {
-        fprintf(stderr, "'%s' failed to read: %s\n", path, strerror(errno));
+        *data = NULL;
+        *size = 0;
         return -1;
     }
 
