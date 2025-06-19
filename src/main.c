@@ -81,6 +81,7 @@ int main(int argc, char** argv) {
                 char **paths = NULL;
                 collect_files(argv[i], &paths, &cnt);
                 add_to_index(paths, cnt);
+                free_str_arr(paths, cnt);
             } else if (file_exists(argv[i])) {
                 char* paths[] = {argv[i]}; 
                 add_to_index(paths, 1);

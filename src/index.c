@@ -343,6 +343,7 @@ int add_to_index(char** paths, size_t paths_cnt) {
             entries_cap *= 2;
             idx_entry_t** tmp = realloc(entries, entries_cap * sizeof(idx_entry_t*));
             if (!tmp) {
+                free(data);
                 free_entries(entries, entries_size);
                 free_idx(idx);
                 return -1;
@@ -351,6 +352,7 @@ int add_to_index(char** paths, size_t paths_cnt) {
         }
 
         entries[entries_size++] = ent;
+        free(data);
     }
     free_entries(idx->entries, idx->hdr->cnt);
     idx->hdr->cnt = entries_size;
