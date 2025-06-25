@@ -9,33 +9,41 @@
 #include "utils.h"
 #include "index.h"
 
-void print_modified(char** paths, int pcnt, idx_t* idx) {
+char** get_modified_files(char** paths, int pcnt, idx_t* idx, int* out_count) {
+    char** result = malloc(sizeof(char*) * pcnt);  
+    int count = 0;
+
     for (int i = 0; i < pcnt; i++) {
         for (size_t j = 0; j < idx->hdr->cnt; j++) {
-            if (strcmp(paths[i], idx->entries[j]->path) != 0) {
+            if (strcmp(paths[i], idx->entries[j]->path) != 0)
                 continue;
-            }
 
             int size;
             unsigned char* data;
-            if (read_file(paths[i], &data, &size) != 0) {
-                continue;
-            }
+            if (read_file(paths[i], &data, &size) != 0)
+                break;
 
             unsigned char* hash = hash_obj(data, size, "blob", false);
             bool mod = memcmp(hash, idx->entries[j]->sha1, SHA_DIGEST_LENGTH) != 0;
 
             if (mod) {
-                printf("  modified file: %s\n", idx->entries[i]->path);
+                result[count++] = strdup(paths[i]);
             }
+
             free(hash);
             free(data);
             break;
         }
     }
+
+    *out_count = count;
+    return result;
 }
 
-void print_new(char** paths, int pcnt, idx_t* idx) {
+char** get_new_files(char** paths, int pcnt, idx_t* idx, int* out_count) {
+    char** result = malloc(sizeof(char*) * pcnt);
+    int count = 0;
+
     for (int i = 0; i < pcnt; i++) {
         bool found = false;
         for (size_t j = 0; j < idx->hdr->cnt; j++) {
@@ -45,12 +53,18 @@ void print_new(char** paths, int pcnt, idx_t* idx) {
             }
         }
         if (!found) {
-            printf("  new file: %s\n", paths[i]);
+            result[count++] = strdup(paths[i]);
         }
     }
+
+    *out_count = count;
+    return result;
 }
 
-void print_deleted(char** paths, int pcnt, idx_t* idx) {
+char** get_deleted_files(char** paths, int pcnt, idx_t* idx, int* out_count) {
+    char** result = malloc(sizeof(char*) * idx->hdr->cnt);
+    int count = 0;
+
     for (size_t i = 0; i < idx->hdr->cnt; i++) {
         bool found = false;
         for (int j = 0; j < pcnt; j++) {
@@ -60,9 +74,24 @@ void print_deleted(char** paths, int pcnt, idx_t* idx) {
             }
         }
         if (!found) {
-            printf("  deleted file: %s\n", idx->entries[i]->path);
+            result[count++] = strdup(idx->entries[i]->path);
         }
     }
+
+    *out_count = count;
+    return result;
+}
+
+void print_red(const char* str) {
+    printf("\033[0;31m%s\033[0m", str);
+}
+
+void print_green(const char* str) {
+    printf("\033[1;32m%s\033[0m", str);
+}
+
+void print_staged_changes() {
+    
 }
 
 int show_status() {
@@ -76,11 +105,40 @@ int show_status() {
         return -1;
     }
 
-    print_modified(paths, fcnt, idx);
-    print_new(paths, fcnt, idx);
-    print_deleted(paths, fcnt, idx);
+    int mod_size, new_size, del_size; 
+    char** mod_list = get_modified_files(paths, fcnt, idx, &mod_size);
+    char** new_list = get_new_files(paths, fcnt, idx, &new_size);
+    char** del_list = get_deleted_files(paths, fcnt, idx, &del_size);
+
+    if (mod_size || del_size) {
+        printf("Changes not staged for commit:\n");
+        for (int i = 0; i < mod_size; i++) {
+            printf("    ");
+            print_red("modified: ");
+            print_red(mod_list[i]);
+            printf("\n");
+        }
+        for (int i = 0; i < del_size; i++) {
+            printf("    ");
+            print_red("deleted: ");
+            print_red(del_list[i]);
+            printf("\n");
+        }
+    }
+
+    if (new_list) {
+        printf("\nUntracked files:\n");
+        for (int i = 0; i < new_size; i++) {
+            printf("    ");
+            print_red(new_list[i]);
+            printf("\n");
+        }
+    }
 
     free_idx(idx);
     free_str_arr(paths, fcnt);
+    free_str_arr(mod_list, mod_size);
+    free_str_arr(new_list, new_size);
+    free_str_arr(del_list, del_size);
     return 0;
 }
