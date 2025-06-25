@@ -8,6 +8,8 @@
 #include "objects.h"
 #include "utils.h"
 
+#define HDR_BUF_SIZE 64
+
 unsigned char* hash_obj(const unsigned char* data, size_t data_size,
                         const char* type, bool write_to_disk) {
     char header[HDR_BUF_SIZE] = {0};
@@ -162,4 +164,32 @@ void cat_file(char* hash) {
     free(data);
     printf("\n");
 
+}
+
+char** collect_tree_files(char* tree_hash, int* cnt) {
+    printf("%s\n", tree_hash);
+    if (cnt) return NULL;
+    return NULL;
+}
+
+char** collect_commit_files(int* cnt) {
+    char* commit_hash = NULL;
+    int commit_hash_size = 0;
+    int ret = read_file(".git/refs/heads/main",
+            (unsigned char**)&commit_hash, &commit_hash_size);
+
+    if (ret != 0 || !commit_hash) return NULL;
+    assert(strlen(commit_hash) >= 40);
+    commit_hash[40] = '\0';
+
+    char* commit_data = get_obj_data(commit_hash);
+    if (!commit_data) return NULL;
+    *(strchr(commit_data + 16, '\n')) = '\0';
+    char* tree_hash = commit_data + 16;
+
+    char** entries = collect_tree_files(tree_hash, cnt);
+    free(commit_data);
+    free(commit_hash);
+
+    return entries;
 }
