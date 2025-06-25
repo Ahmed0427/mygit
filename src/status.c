@@ -126,7 +126,7 @@ int show_status() {
         }
     }
 
-    if (new_list) {
+    if (new_size) {
         printf("\nUntracked files:\n");
         for (int i = 0; i < new_size; i++) {
             printf("    ");
