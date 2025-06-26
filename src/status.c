@@ -103,6 +103,7 @@ void print_staged_changes(idx_t* idx) {
         printf("%s\n", hash);
         free(hash);
     }
+    free_str_arr(entries, entries_cnt);
     if (idx) return;
 }
 
@@ -123,32 +124,32 @@ int show_status() {
     char** del_list = get_deleted_files(paths, fcnt, idx, &del_size);
 
 
-    print_staged_changes(idx);
+    // print_staged_changes(idx);
 
-    // if (mod_size || del_size) {
-    //     printf("Changes not staged for commit:\n");
-    //     for (int i = 0; i < mod_size; i++) {
-    //         printf("    ");
-    //         print_red("modified: ");
-    //         print_red(mod_list[i]);
-    //         printf("\n");
-    //     }
-    //     for (int i = 0; i < del_size; i++) {
-    //         printf("    ");
-    //         print_red("deleted: ");
-    //         print_red(del_list[i]);
-    //         printf("\n");
-    //     }
-    // }
-    //
-    // if (new_size) {
-    //     printf("\nUntracked files:\n");
-    //     for (int i = 0; i < new_size; i++) {
-    //         printf("    ");
-    //         print_red(new_list[i]);
-    //         printf("\n");
-    //     }
-    // }
+    if (mod_size || del_size) {
+        printf("Changes not staged for commit:\n");
+        for (int i = 0; i < mod_size; i++) {
+            printf("    ");
+            print_red("modified: ");
+            print_red(mod_list[i]);
+            printf("\n");
+        }
+        for (int i = 0; i < del_size; i++) {
+            printf("    ");
+            print_red("deleted: ");
+            print_red(del_list[i]);
+            printf("\n");
+        }
+    }
+
+    if (new_size) {
+        printf("\nUntracked files:\n");
+        for (int i = 0; i < new_size; i++) {
+            printf("    ");
+            print_red(new_list[i]);
+            printf("\n");
+        }
+    }
 
     free_idx(idx);
     free_str_arr(paths, fcnt);

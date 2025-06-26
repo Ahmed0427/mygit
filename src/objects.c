@@ -259,6 +259,7 @@ char** collect_tree_files(char* tree_hash, int* cnt) {
 
         assert(strcmp(type, "tree") == 0);
         tree_t* tree = parse_tree_entries(content, atoi(size_str));
+        free(data);
 
         for (int i = 0; i < tree->count; i++) {
             tree_entry_t ent = tree->entries[i];
