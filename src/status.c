@@ -91,7 +91,18 @@ void print_green(const char* str) {
 }
 
 void print_staged_changes(idx_t* idx) {
-    collect_commit_files(NULL);          
+    int entries_cnt = 0;
+    char** entries = collect_commit_files(&entries_cnt);          
+    for (int i = 0; i < entries_cnt; i++) {
+        printf("%s\n", entries[i]);
+    }
+    printf("\n");
+    for (int i = 0; i < (int)idx->hdr->cnt; i++) {
+        printf("%s ", idx->entries[i]->path);
+        char* hash = sha1_to_hex(idx->entries[i]->sha1);
+        printf("%s\n", hash);
+        free(hash);
+    }
     if (idx) return;
 }
 

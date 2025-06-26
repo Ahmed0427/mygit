@@ -126,7 +126,7 @@ char* get_obj_data(char* hash) {
     return data;
 }
 
-tree_t* parse_tree_entries(char* content) {
+tree_t* parse_tree_entries(char* content, int size) {
     char* p = content;
     int capacity = 8;
     int count = 0;
@@ -134,7 +134,7 @@ tree_t* parse_tree_entries(char* content) {
     tree_entry_t* entries = malloc(capacity * sizeof(tree_entry_t));
     if (!entries) return NULL;
 
-    while (*p) {
+    while (p - content < size) {
         if (count >= capacity) {
             capacity *= 2;
             entries = realloc(entries, capacity * sizeof(tree_entry_t));
@@ -218,7 +218,7 @@ void cat_file(char* hash) {
     char* content = data + strlen(type) + strlen(size_str) + 2;
     
     if (strcmp(type, "tree") == 0) {
-        tree_t* tree = parse_tree_entries(content);
+        tree_t* tree = parse_tree_entries(content, atoi(size_str));
         print_tree(tree);
         free_tree(tree);
 
@@ -232,83 +232,65 @@ void cat_file(char* hash) {
 }
 
 char** collect_tree_files(char* tree_hash, int* cnt) {
-    int stk_cap = 8;
-    char** stk = calloc(stk_cap, sizeof(char*));
-    char* entry = calloc(strlen(tree_hash) + 3, 1);
-    strcat(entry, ".");
-    strcat(entry, " ");
-    strcat(entry, tree_hash);
-    stk[0] = strdup(entry);
-    free(entry);
-    int stk_sz = 1;
+    int stk_cap = 8, stk_sz = 0;
+    char** stk = malloc(stk_cap * sizeof(char*));
 
-    int lst_cap = 8;
-    char** files = calloc(lst_cap, sizeof(char*));
-    int lst_sz = 0;
+    int lst_cap = 8, lst_sz = 0;
+    char** files = malloc(lst_cap * sizeof(char*));
+
+    char entry_buf[PATH_BUF_SIZE];
+    snprintf(entry_buf, sizeof(entry_buf), ". %s", tree_hash);
+    stk[stk_sz++] = strdup(entry_buf);
 
     while (stk_sz > 0) {
-        stk_sz--;
-        char* path_hash = stk[stk_sz];
+        char* path_hash = stk[--stk_sz];
         char* path = strtok(path_hash, " ");
         char* hash = strtok(NULL, " ");
+
         char* data = get_obj_data(hash);
-        if (data == NULL) {
-            fprintf(stderr, "ERROR: Not a valid object name %s", hash);
+        if (!data) {
+            fprintf(stderr, "ERROR: Not a valid object name %s\n", hash);
             exit(1);
         }
 
-        char *type = strtok(data, " "); 
+        char *type = strtok(data, " ");
         char *size_str = strtok(NULL, " ");
-        printf("type: %s\n", type);
-        printf("size: %s\n", size_str);
-        printf("\n");
-
         char* content = data + strlen(type) + strlen(size_str) + 2;
 
         assert(strcmp(type, "tree") == 0);
+        tree_t* tree = parse_tree_entries(content, atoi(size_str));
 
-        tree_t* tree = parse_tree_entries(content);
-
-        char npath[PATH_BUF_SIZE] = {0};
         for (int i = 0; i < tree->count; i++) {
             tree_entry_t ent = tree->entries[i];
 
-            if (strcmp(path, ".") != 0) {
-                snprintf(npath, sizeof(npath), "%s/%s", path, ent.name);
+            
+            if (strcmp(path, ".") == 0) {
+                snprintf(entry_buf, sizeof(entry_buf), "%s", ent.name);
             } else {
-                snprintf(npath, sizeof(npath), "%s", ent.name);
-            }
+                snprintf(entry_buf, sizeof(entry_buf), "%s/%s", path, ent.name);
+            } 
 
             if (strcmp(ent.type, "tree") == 0) {
                 if (stk_sz >= stk_cap) {
                     stk_cap *= 2;
                     stk = realloc(stk, stk_cap * sizeof(char*));
                 }
-                entry = calloc(strlen(npath) + strlen(ent.hash) + 2, 1);
-                strcat(entry, npath);
-                strcat(entry, " ");
-                strcat(entry, ent.hash);
-                stk[stk_sz] = strdup(entry);
-                free(entry);
-                stk_sz++;
+                char buf[PATH_BUF_SIZE * 2];
+                snprintf(buf, sizeof(buf), "%s %s", entry_buf, ent.hash);
+                stk[stk_sz++] = strdup(buf);
             } else {
-                printf("%s\n", npath);
                 if (lst_sz >= lst_cap) {
                     lst_cap *= 2;
-                    files = realloc(*files, lst_cap * sizeof(char*));
+                    files = realloc(files, lst_cap * sizeof(char*));
                 }
-                entry = calloc(strlen(npath) + strlen(ent.hash) + 2, 1);
-                strcat(entry, npath);
-                strcat(entry, " ");
-                strcat(entry, ent.hash);
-                files[lst_sz] = strdup(entry);
-                printf("%s\n", files[lst_sz]);
-                free(entry);
-                lst_sz++;
+                char buf[PATH_BUF_SIZE * 2];
+                snprintf(buf, sizeof(buf), "%s %s", entry_buf, ent.hash);
+                files[lst_sz++] = strdup(buf);
             }
         }
         free(path_hash);
     }
+
     free(stk);
     *cnt = lst_sz;
     return files;
