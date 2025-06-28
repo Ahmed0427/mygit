@@ -32,7 +32,7 @@ void help_msg() {
     printf("  add <paths...>                              Add files/dirs to index\n");
     printf("  cat-file <obj-hash>                         Print content for repo obj\n");
     printf("  ls-files [-s]                               List index files (-s = detailed)\n");
-    printf("  status                                      Show index vs working tree\n");
+    printf("  status                                      Show the working tree status\n");
     printf("  commit -m MESSAGE --author=\"NAME <EMAIL>\"   Commit with message and author\n");
     printf("  help                                        Show this message\n");
 }
