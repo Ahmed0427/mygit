@@ -317,7 +317,6 @@ int add_to_index(char** paths, size_t paths_cnt) {
         int data_size = 0;
         unsigned char *data = NULL;
         read_file(paths[i], &data, &data_size);
-
         unsigned char* raw_sha1 = hash_obj(data, data_size, "blob", true);
 
         struct stat st;

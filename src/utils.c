@@ -97,7 +97,7 @@ int read_file(const char* path, unsigned char** data, int* size) {
 int write_file(const char* path, const unsigned char* data,
                size_t size, int mode) {
 
-    int fd = open(path, O_CREAT | O_RDWR, mode);
+    int fd = open(path, O_CREAT | O_RDWR | O_TRUNC, mode);
     if (fd == -1) {
         fprintf(stderr, "'%s' failed to write: %s\n", path, strerror(errno));
         return -1;
