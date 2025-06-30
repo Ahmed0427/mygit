@@ -110,7 +110,7 @@ char* get_obj_data(char* hash) {
     assert(zdata != NULL);
     assert(zdata_sz > 0);
 
-    uLongf data_sz = zdata_sz * 5;
+    uLongf data_sz = uncompressBound(zdata_sz);
     char* data = malloc(data_sz);
     if (!data) {
         perror("malloc for decompressed data");
