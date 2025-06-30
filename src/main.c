@@ -29,7 +29,7 @@ void help_msg() {
     printf("mygit commands:\n");
     printf("  init                                        Init repo\n");
     printf("  cat-file <sha1>                             Prints the content of the repo obj\n");
-    printf("  add <paths...>                              Add files/dirs to index\n");
+    printf("  add <file>...                               Add files/dirs to index\n");
     printf("  cat-file <obj-hash>                         Print content for repo obj\n");
     printf("  ls-files [-s]                               List index files (-s = detailed)\n");
     printf("  status                                      Show the working tree status\n");
