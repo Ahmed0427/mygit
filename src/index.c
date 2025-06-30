@@ -360,3 +360,52 @@ int add_to_index(char** paths, size_t paths_cnt) {
     free_idx(idx);
     return 0;
 }
+
+int remove_from_index(char** paths, size_t paths_cnt) {
+    idx_t *idx = read_idx();
+    if (!idx) return -1;
+
+    size_t entries_cap = 4, entries_size = 0;
+    idx_entry_t** entries = malloc(entries_cap * sizeof(idx_entry_t*));
+    if (!entries) {
+        free_idx(idx);
+        return -1;
+    }
+
+    for (size_t j = 0; j < idx->hdr->cnt; j++) {
+        bool found = false;
+        for (size_t i = 0; i < paths_cnt; i++) {
+            if (strcmp(paths[i], idx->entries[j]->path) == 0) {
+                found = true;
+                break;
+            }
+        }
+        if (found) continue;
+
+        if (entries_size >= entries_cap) {
+            entries_cap *= 2;
+            idx_entry_t** tmp = realloc(entries, entries_cap * sizeof(idx_entry_t*));
+            if (!tmp) {
+                free_entries(entries, entries_size);
+                free_idx(idx);
+                return -1;
+            }
+            entries = tmp;
+        }
+
+        idx_entry_t* new_entry = copy_entry(idx->entries[j]);
+        if (!new_entry) {
+            free_entries(entries, entries_size);
+            free_idx(idx);
+            return -1;
+        }
+        entries[entries_size++] = new_entry;
+    }
+
+    free_entries(idx->entries, idx->hdr->cnt);
+    idx->hdr->cnt = entries_size;
+    idx->entries = entries;
+    write_idx(idx);
+    free_idx(idx);
+    return 0;
+}

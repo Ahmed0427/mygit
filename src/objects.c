@@ -239,7 +239,7 @@ void print_tree(const tree_t* tree) {
 void cat_file(char* hash) {
     char* data = get_obj_data(hash);
     if (data == NULL) {
-        fprintf(stderr, "ERROR: Not a valid object name %s", hash);
+        fprintf(stderr, "ERROR: Not a valid object name %s\n", hash);
         assert(false);
     }
 

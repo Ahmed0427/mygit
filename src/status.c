@@ -7,7 +7,6 @@
 #include "status.h"
 #include "objects.h"
 #include "utils.h"
-#include "index.h"
 
 char** get_modified_files(char** paths, int pcnt, idx_t* idx, int* out_count) {
     char** result = malloc(sizeof(char*) * pcnt);  

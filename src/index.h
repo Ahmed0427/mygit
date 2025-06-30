@@ -53,4 +53,6 @@ int write_idx(idx_t *idx);
 
 int add_to_index(char** paths, size_t paths_cnt);
 
+int remove_from_index(char** paths, size_t paths_cnt);
+
 #endif 

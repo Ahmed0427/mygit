@@ -76,20 +76,67 @@ int main(int argc, char** argv) {
             show_status();
         }
     } else if (strcmp(argv[1], "add") == 0) {
+        int fcnt = 0;
+        char** paths = NULL;
+        collect_files(".", &paths, &fcnt);
+
         for (int i = 2; i < argc; i++) {
-            if (dir_exists(argv[i])) {
-                int cnt = 0;
-                char **paths = NULL;
-                collect_files(argv[i], &paths, &cnt);
-                add_to_index(paths, cnt);
-                free_str_arr(paths, cnt);
+            idx_t* idx = read_idx();
+            if (!idx) { continue; }
+
+            int mod_size = 0, new_size = 0, del_size = 0; 
+            char** mod_list = get_modified_files(paths, fcnt, idx, &mod_size);
+            char** new_list = get_new_files(paths, fcnt, idx, &new_size);
+            char** del_list = get_deleted_files(paths, fcnt, idx, &del_size);
+
+            if (strcmp(argv[i], ".") == 0) {
+                add_to_index(mod_list, mod_size);
+                add_to_index(new_list, new_size);
+                remove_from_index(del_list, del_size);
+                break;
             } else if (file_exists(argv[i])) {
-                char* paths[] = {argv[i]}; 
-                add_to_index(paths, 1);
+                bool found = false;
+                for (int j = 0; j < new_size; j++) {
+                    if (strncmp(new_list[j], argv[i], 256) == 0) {
+                        found = true; 
+                        break;
+                    }
+                }
+                for (int j = 0; j < mod_size; j++) {
+                    if (strncmp(mod_list[j], argv[i], 256) == 0) {
+                        found = true; 
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    fprintf(stderr, "ERROR: file '%s' doesn't exit\n", argv[i]);
+                } else {
+                    char* path[] = {argv[i]}; 
+                    add_to_index(path, 1);
+                }
             } else {
-                fprintf(stderr, "ERROR: file '%s' doesn't exit\n", argv[i]);
+                bool found = false;
+                for (int j = 0; j < del_size; j++) {
+                    if (strncmp(del_list[j], argv[i], 256) == 0) {
+                        found = true; 
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    fprintf(stderr, "ERROR: file '%s' doesn't exit\n", argv[i]);
+                } else {
+                    char* path[] = {argv[i]}; 
+                    remove_from_index(path, 1);
+                }
             }
+            free_str_arr(new_list, new_size);
+            free_str_arr(mod_list, mod_size);
+            free_str_arr(del_list, del_size);
         }
+        free_str_arr(paths, fcnt);
+
     } else if (strcmp(argv[1], "cat-file") == 0) {
         if (argc > 3) {
             fprintf(stderr, "ERROR: too many args\n");
@@ -131,6 +178,8 @@ int main(int argc, char** argv) {
         regfree(&regex);
 
         commit(author, message);        
+    } else {
+        fprintf(stderr, "'%s' is not a mygit command. See 'mygit help'\n", argv[1]);
     }
     return 0;
 }

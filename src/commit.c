@@ -188,7 +188,11 @@ char* get_parent_hash() {
     int hash_sz = 0;
     unsigned char *hash = NULL;
     read_file(".git/refs/heads/main", &hash, &hash_sz);
-    return (char*)hash;
+    if (!hash) return NULL;
+    assert(strlen((char*)hash) >= 40);
+    char* ret_hash = calloc(41, 1);
+    memcpy(ret_hash, hash, 40);
+    return ret_hash;
 }
 
 void commit(char* author, char* msg) {
@@ -228,7 +232,7 @@ void commit(char* author, char* msg) {
     assert(data != NULL);
 
     strcat(data, tree_hash_line);
-    strcat(data, parent_hash_line);
+    if (parent_hash && strlen(parent_hash) == 40) strcat(data, parent_hash_line);
     strcat(data, author_line);
     strcat(data, committer_line);
     strcat(data, "\n");
@@ -237,6 +241,7 @@ void commit(char* author, char* msg) {
 
     char* commit_hash_raw = (char*)hash_obj((unsigned char*)data,
                             data_sz, "commit", true);
+
     char* commit_hash = sha1_to_hex((uint8_t*)commit_hash_raw);
     assert(commit_hash != NULL);
     free(commit_hash_raw);
