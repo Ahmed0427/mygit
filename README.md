@@ -34,7 +34,7 @@ Then try it:
 
 ```bash
 mygit init                                        Init repo  
-mygit add <paths...>                              Add files/dirs to index  
+mygit add <file>...                               Add files/dirs to index  
 mygit cat-file <sha1>                             Prints the content of the repo obj 
 mygit ls-files [-s]                               List index files (-s = detailed)  
 mygit status                                      Show the working tree status
